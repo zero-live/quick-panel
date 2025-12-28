@@ -58,6 +58,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func setupServices() {
+        // Load settings
+        _ = SettingsManager.shared
+
+        // Setup status bar
+        StatusBarManager.shared.setupStatusBar()
+
+        // Apply launch at login setting
+        let settings = SettingsManager.shared.settings
+        if settings.launchAtLogin {
+            _ = LoginItemManager.shared.setLaunchAtLogin(true)
+        }
+
         // Initialize panel window manager
         panelWindowManager = PanelWindowManager()
 

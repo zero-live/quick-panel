@@ -10,6 +10,7 @@ import UniformTypeIdentifiers
 
 struct PanelView: View {
     @ObservedObject var dataManager = DataManager.shared
+    @ObservedObject var settingsManager = SettingsManager.shared
     @ObservedObject var contextDetector = ContextDetector.shared
     @State private var currentAppBundleId: String? = nil
     @State private var currentAppName: String = "当前应用"
@@ -17,8 +18,14 @@ struct PanelView: View {
     @State private var lowerPage = 0
     @State private var lastActiveApp: (bundleId: String?, name: String) = (nil, "当前应用")
 
-    let columns = Array(repeating: GridItem(.fixed(70), spacing: 16), count: 4)
-    let itemsPerPage = 12  // 3x4 grid
+    var columns: [GridItem] {
+        let settings = settingsManager.settings
+        return Array(repeating: GridItem(.fixed(70), spacing: settings.itemSpacing), count: settings.gridColumns)
+    }
+
+    var itemsPerPage: Int {
+        settingsManager.settings.itemsPerPage
+    }
 
     var upperItems: [PanelItem] {
         dataManager.getItems(for: .upper)

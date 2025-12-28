@@ -25,6 +25,15 @@ class PanelWindowManager {
         ) { [weak self] _ in
             self?.hidePanel()
         }
+
+        // Listen for settings changes
+        NotificationCenter.default.addObserver(
+            forName: .settingsDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.applySettings()
+        }
     }
 
     private func setupPanelWindow() {
@@ -40,14 +49,13 @@ class PanelWindowManager {
         let panelView = PanelView()
         let hostingController = NSHostingController(rootView: panelView)
 
-        // Create custom window
-        // - Drag handle: 24pt
-        // - Upper layer: 3 * 90 + 2 * 16 + padding = ~320pt
-        // - Divider: 20pt
-        // - Lower layer: 3 * 90 + 2 * 16 + padding = ~320pt
-        // Total: approximately 684pt height
+        // Get dynamic window size from settings
+        let settings = SettingsManager.shared.settings
+        let width = settings.panelWidth
+        let height = settings.layerHeight * 2 + 44  // Two layers + drag handle(24) + divider(20)
+
         let window = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 360, height: 684),
+            contentRect: NSRect(x: 0, y: 0, width: width, height: height),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -221,6 +229,33 @@ class PanelWindowManager {
         for (index, window) in NSApplication.shared.windows.enumerated() {
             print("  Window \(index): \(window.title) - visible: \(window.isVisible)")
         }
+    }
+
+    private func applySettings() {
+        guard let window = panelWindow else {
+            print("⚠️ Panel window not created yet, settings will be applied on creation")
+            return
+        }
+
+        let settings = SettingsManager.shared.settings
+
+        // Recalculate window size
+        let width = settings.panelWidth
+        let height = settings.layerHeight * 2 + 44
+
+        // Hide panel before resizing if it's visible
+        let wasVisible = isVisible
+        if wasVisible {
+            hidePanel()
+        }
+
+        // Update window size
+        window.setContentSize(NSSize(width: width, height: height))
+
+        // Update window opacity
+        window.alphaValue = settings.panelOpacity
+
+        print("⚙️ Settings applied: \(Int(width))×\(Int(height))pt, opacity: \(Int(settings.panelOpacity * 100))%")
     }
 }
 
