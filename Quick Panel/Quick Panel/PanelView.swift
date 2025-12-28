@@ -34,8 +34,11 @@ struct PanelView: View {
     var lowerItems: [PanelItem] {
         // Filter by current app
         if let bundleId = currentAppBundleId {
-            return dataManager.getItemsForCurrentApp(bundleIdentifier: bundleId)
+            let items = dataManager.getItemsForCurrentApp(bundleIdentifier: bundleId)
+            print("📱 Getting lower items for \(currentAppName) (\(bundleId)): \(items.count) items")
+            return items
         }
+        print("⚠️ No bundle ID, returning empty lower items")
         return []
     }
 
@@ -94,6 +97,7 @@ struct PanelView: View {
                     )
                 }
             )
+            .id("\(currentAppBundleId ?? "none")-\(lowerItems.count)")
         }
         .background(.ultraThinMaterial)
         .cornerRadius(12)
