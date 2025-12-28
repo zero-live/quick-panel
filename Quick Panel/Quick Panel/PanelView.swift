@@ -15,6 +15,10 @@ struct PanelView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // Drag handle at the top
+            DragHandleView()
+                .frame(height: 24)
+
             // Upper grid - dynamic items
             LazyVGrid(columns: columns, spacing: 16) {
                 ForEach(dataManager.items.prefix(12)) { item in
@@ -28,7 +32,8 @@ struct PanelView: View {
                     }
                 }
             }
-            .padding(20)
+            .padding(.horizontal, 20)
+            .padding(.bottom, 20)
         }
         .background(.ultraThinMaterial)
         .cornerRadius(12)
@@ -36,6 +41,26 @@ struct PanelView: View {
         .sheet(isPresented: $showingAddSheet) {
             AddItemView()
         }
+    }
+}
+
+// MARK: - Drag Handle
+struct DragHandleView: View {
+    var body: some View {
+        VStack(spacing: 4) {
+            Spacer()
+            // Three dots indicator
+            HStack(spacing: 4) {
+                ForEach(0..<3) { _ in
+                    Circle()
+                        .fill(Color.secondary.opacity(0.5))
+                        .frame(width: 4, height: 4)
+                }
+            }
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+        .contentShape(Rectangle())
     }
 }
 

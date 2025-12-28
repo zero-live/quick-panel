@@ -20,9 +20,9 @@ class PanelWindowManager {
         let panelView = PanelView()
         let hostingController = NSHostingController(rootView: panelView)
 
-        // Create custom window with updated size
+        // Create custom window with updated size (added 24pt for drag handle)
         let window = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 360, height: 340),
+            contentRect: NSRect(x: 0, y: 0, width: 360, height: 364),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -33,7 +33,7 @@ class PanelWindowManager {
         window.backgroundColor = .clear
         window.level = .floating
         window.collectionBehavior = [.canJoinAllSpaces, .stationary]
-        window.isMovableByWindowBackground = false
+        window.isMovableByWindowBackground = true  // Allow dragging by background
         window.hasShadow = true
 
         // Setup click-outside-to-hide behavior
