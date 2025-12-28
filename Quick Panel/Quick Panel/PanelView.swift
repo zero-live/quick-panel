@@ -453,21 +453,14 @@ struct ItemButton: View {
         .onHover { hovering in
             isHovered = hovering
         }
-        .gesture(
-            DragGesture(minimumDistance: 10)
-                .onChanged { _ in
-                    if !isDragging {
-                        withAnimation(.easeOut(duration: 0.15)) {
-                            isDragging = true
-                            scale = 0.95
-                        }
-                    }
-                }
-        )
         .onTapGesture {
             handleItemClick()
         }
         .onDrag {
+            withAnimation(.easeOut(duration: 0.15)) {
+                isDragging = true
+                scale = 0.95
+            }
             // Cancel any existing timeout task
             dragTimeoutTask?.cancel()
 

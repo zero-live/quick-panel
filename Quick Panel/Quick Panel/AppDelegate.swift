@@ -22,6 +22,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         hasLaunched = true
 
+        // Check for existing instances
+        if !checkSingleInstance() {
+            print("❌ Another instance is already running, exiting...")
+            NSApp.terminate(nil)
+            return
+        }
+
         // Hide the default window
         NSApplication.shared.windows.first?.close()
 
@@ -68,5 +75,28 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         mouseEventMonitor?.stop()
+    }
+
+    private func checkSingleInstance() -> Bool {
+        guard let bundleID = Bundle.main.bundleIdentifier else {
+            print("⚠️ Cannot get bundle identifier")
+            return true
+        }
+
+        let runningApps = NSWorkspace.shared.runningApplications
+        let instances = runningApps.filter { $0.bundleIdentifier == bundleID }
+
+        print("🔍 Found \(instances.count) instance(s) of Quick Panel")
+
+        // Should only find ourselves
+        if instances.count > 1 {
+            print("⚠️ Multiple instances detected:")
+            for (index, app) in instances.enumerated() {
+                print("  Instance \(index + 1): PID \(app.processIdentifier)")
+            }
+            return false
+        }
+
+        return true
     }
 }
