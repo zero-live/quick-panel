@@ -12,21 +12,25 @@ class DataManager: ObservableObject {
     static let shared = DataManager()
 
     @Published var items: [PanelItem] = []
+    @Published var pageGroups = PageGroup()
 
     private let configDirectory: URL
     private let configFile: URL
+    private let groupsFile: URL
 
     private init() {
         // Setup config directory
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         configDirectory = appSupport.appendingPathComponent("Quick Panel")
         configFile = configDirectory.appendingPathComponent("config.json")
+        groupsFile = configDirectory.appendingPathComponent("groups.json")
 
         // Create directory if needed
         try? FileManager.default.createDirectory(at: configDirectory, withIntermediateDirectories: true)
 
         // Load data
         loadItems()
+        loadPageGroups()
 
         // Don't create default items - let users add their own
         print("📦 Loaded \(items.count) items. Users can add items using the '+' button.")
@@ -97,11 +101,88 @@ class DataManager: ObservableObject {
         saveItems()
     }
 
+    func swapItems(layer: PanelLayer, fromIndex: Int, toIndex: Int) {
+        // Get items for this layer
+        var layerItems = getItems(for: layer)
+
+        guard fromIndex >= 0, fromIndex < layerItems.count,
+              toIndex >= 0, toIndex < layerItems.count,
+              fromIndex != toIndex else {
+            return
+        }
+
+        // Swap the two items
+        layerItems.swapAt(fromIndex, toIndex)
+
+        // Update order values
+        for (index, var item) in layerItems.enumerated() {
+            item.order = index
+            layerItems[index] = item
+        }
+
+        // Replace items in main array
+        for layerItem in layerItems {
+            if let mainIndex = items.firstIndex(where: { $0.id == layerItem.id }) {
+                items[mainIndex] = layerItem
+            }
+        }
+
+        saveItems()
+        print("✅ Swapped items at \(fromIndex) and \(toIndex) in \(layer) layer")
+    }
+
     // MARK: - Utility
+
+    func getItems(for layer: PanelLayer) -> [PanelItem] {
+        return items.filter { $0.layer == layer }.sorted { $0.order < $1.order }
+    }
+
+    func getItemsForCurrentApp(bundleIdentifier: String?) -> [PanelItem] {
+        guard let bundleId = bundleIdentifier else {
+            return []
+        }
+        return items.filter {
+            $0.layer == .lower && $0.appBundleIdentifier == bundleId
+        }.sorted { $0.order < $1.order }
+    }
 
     func clearAllItems() {
         items.removeAll()
         saveItems()
         print("🗑️ Cleared all items")
+    }
+
+    // MARK: - Page Groups
+
+    func loadPageGroups() {
+        guard FileManager.default.fileExists(atPath: groupsFile.path) else {
+            print("📂 No groups file found")
+            return
+        }
+
+        do {
+            let data = try Data(contentsOf: groupsFile)
+            pageGroups = try JSONDecoder().decode(PageGroup.self, from: data)
+            print("✅ Loaded page groups")
+        } catch {
+            print("❌ Failed to load page groups: \(error.localizedDescription)")
+        }
+    }
+
+    func savePageGroups() {
+        do {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try encoder.encode(pageGroups)
+            try data.write(to: groupsFile)
+            print("✅ Saved page groups")
+        } catch {
+            print("❌ Failed to save page groups: \(error.localizedDescription)")
+        }
+    }
+
+    func setPageGroup(layer: PanelLayer, page: Int, name: String?) {
+        pageGroups.setGroupName(layer: layer, page: page, name: name)
+        savePageGroups()
     }
 }

@@ -12,7 +12,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var panelWindowManager: PanelWindowManager?
     var mouseEventMonitor: MouseEventMonitor?
 
+    private var hasLaunched = false
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Prevent multiple launches
+        if hasLaunched {
+            print("⚠️ Application already launched, ignoring duplicate launch")
+            return
+        }
+        hasLaunched = true
+
         // Hide the default window
         NSApplication.shared.windows.first?.close()
 

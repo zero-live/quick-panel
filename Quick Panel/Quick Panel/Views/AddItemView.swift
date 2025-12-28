@@ -11,12 +11,27 @@ import UniformTypeIdentifiers
 
 struct AddItemView: View {
     @Environment(\.dismiss) var dismiss
+
+    var onDismiss: (() -> Void)? = nil
+    let presetLayer: PanelLayer
+    let presetAppBundleId: String?
+    let presetAppName: String?
+
     @State private var name = ""
     @State private var itemType: ItemType = .application
+    @State private var layer: PanelLayer = .upper
     @State private var path = ""
     @State private var browserPath: String?
     @State private var customIcon: NSImage?
     @State private var isFetchingIcon = false
+    @State private var bindToCurrentApp = false
+    @State private var selectedAppBundleId: String?
+
+    init(presetLayer: PanelLayer = .upper, presetAppBundleId: String? = nil, presetAppName: String? = nil) {
+        self.presetLayer = presetLayer
+        self.presetAppBundleId = presetAppBundleId
+        self.presetAppName = presetAppName
+    }
 
     var body: some View {
         VStack(spacing: 20) {
@@ -25,6 +40,21 @@ struct AddItemView: View {
                 .bold()
 
             Form {
+                Picker("层级", selection: $layer) {
+                    Text("上层（常用）").tag(PanelLayer.upper)
+                    Text("下层").tag(PanelLayer.lower)
+                }
+                .pickerStyle(.segmented)
+                .disabled(presetLayer == .lower && presetAppBundleId != nil)
+
+                // Show app binding option for lower layer
+                if layer == .lower, let appName = presetAppName, let appBundleId = presetAppBundleId {
+                    Toggle("绑定到当前应用 (\(appName))", isOn: $bindToCurrentApp)
+                        .onChange(of: bindToCurrentApp) { _, newValue in
+                            selectedAppBundleId = newValue ? appBundleId : nil
+                        }
+                }
+
                 Picker("类型", selection: $itemType) {
                     Text("应用程序").tag(ItemType.application)
                     Text("网站").tag(ItemType.website)
@@ -82,6 +112,7 @@ struct AddItemView: View {
 
             HStack {
                 Button("取消") {
+                    AddItemWindowManager.shared.closeAddItemWindow()
                     dismiss()
                 }
                 .keyboardShortcut(.cancelAction)
@@ -97,6 +128,14 @@ struct AddItemView: View {
             .padding()
         }
         .frame(width: 500, height: itemType == .website ? 350 : 300)
+        .onAppear {
+            // Initialize with preset values
+            layer = presetLayer
+            if presetLayer == .lower, let bundleId = presetAppBundleId {
+                bindToCurrentApp = true
+                selectedAppBundleId = bundleId
+            }
+        }
     }
 
     private func selectApplication() {
@@ -146,16 +185,23 @@ struct AddItemView: View {
             iconData = tiffData
         }
 
+        let layerItems = DataManager.shared.getItems(for: layer)
         let newItem = PanelItem(
             name: name,
             type: itemType,
             path: path,
             iconData: iconData,
             browserPath: browserPath,
-            order: DataManager.shared.items.count
+            layer: layer,
+            appBundleIdentifier: selectedAppBundleId,
+            order: layerItems.count
         )
 
         DataManager.shared.addItem(newItem)
+
+        // Close the window
+        AddItemWindowManager.shared.closeAddItemWindow()
+        onDismiss?()
         dismiss()
     }
 }
@@ -165,6 +211,7 @@ struct EditItemView: View {
     let item: PanelItem
 
     @State private var name: String
+    @State private var layer: PanelLayer
     @State private var path: String
     @State private var browserPath: String?
     @State private var customIcon: NSImage?
@@ -173,6 +220,7 @@ struct EditItemView: View {
     init(item: PanelItem) {
         self.item = item
         _name = State(initialValue: item.name)
+        _layer = State(initialValue: item.layer)
         _path = State(initialValue: item.path)
         _browserPath = State(initialValue: item.browserPath)
         _customIcon = State(initialValue: item.iconData != nil ? NSImage(data: item.iconData!) : nil)
@@ -185,6 +233,12 @@ struct EditItemView: View {
                 .bold()
 
             Form {
+                Picker("层级", selection: $layer) {
+                    Text("上层（常用）").tag(PanelLayer.upper)
+                    Text("下层").tag(PanelLayer.lower)
+                }
+                .pickerStyle(.segmented)
+
                 TextField("名称", text: $name)
 
                 if item.type == .application {
@@ -293,6 +347,7 @@ struct EditItemView: View {
 
         var updatedItem = item
         updatedItem.name = name
+        updatedItem.layer = layer
         updatedItem.path = path
         updatedItem.browserPath = browserPath
         updatedItem.iconData = iconData

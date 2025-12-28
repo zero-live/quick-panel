@@ -8,6 +8,11 @@
 import Foundation
 import AppKit
 
+enum PanelLayer: String, Codable {
+    case upper = "upper"  // Top layer
+    case lower = "lower"  // Bottom layer
+}
+
 struct PanelItem: Identifiable, Codable {
     let id: UUID
     var name: String
@@ -15,15 +20,19 @@ struct PanelItem: Identifiable, Codable {
     var path: String  // App path or website URL
     var iconData: Data?  // Custom icon (PNG data)
     var browserPath: String?  // Optional: specific browser for websites
+    var layer: PanelLayer  // Upper or lower layer
+    var appBundleIdentifier: String?  // For lower layer: bind to specific app (e.g., "com.microsoft.edgemac")
     var order: Int
 
-    init(id: UUID = UUID(), name: String, type: ItemType, path: String, iconData: Data? = nil, browserPath: String? = nil, order: Int) {
+    init(id: UUID = UUID(), name: String, type: ItemType, path: String, iconData: Data? = nil, browserPath: String? = nil, layer: PanelLayer = .upper, appBundleIdentifier: String? = nil, order: Int) {
         self.id = id
         self.name = name
         self.type = type
         self.path = path
         self.iconData = iconData
         self.browserPath = browserPath
+        self.layer = layer
+        self.appBundleIdentifier = appBundleIdentifier
         self.order = order
     }
 
