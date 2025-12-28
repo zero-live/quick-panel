@@ -14,6 +14,17 @@ class PanelWindowManager {
 
     init() {
         setupPanelWindow()
+        setupNotifications()
+    }
+
+    private func setupNotifications() {
+        NotificationCenter.default.addObserver(
+            forName: .hidePanel,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.hidePanel()
+        }
     }
 
     private func setupPanelWindow() {

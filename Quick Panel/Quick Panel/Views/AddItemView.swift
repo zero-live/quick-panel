@@ -15,6 +15,8 @@ struct AddItemView: View {
     @State private var itemType: ItemType = .application
     @State private var path = ""
     @State private var browserPath: String?
+    @State private var customIcon: NSImage?
+    @State private var isFetchingIcon = false
 
     var body: some View {
         VStack(spacing: 20) {
@@ -39,8 +41,41 @@ struct AddItemView: View {
                         }
                     }
                 } else {
-                    TextField("网址", text: $path)
-                        .textContentType(.URL)
+                    VStack(alignment: .leading, spacing: 8) {
+                        TextField("网址", text: $path)
+                            .textContentType(.URL)
+                            .onChange(of: path) { oldValue, newValue in
+                                // Auto-fill name from domain if name is empty
+                                if name.isEmpty, let url = URL(string: newValue), let host = url.host {
+                                    name = host
+                                }
+                            }
+
+                        HStack {
+                            if let icon = customIcon {
+                                Image(nsImage: icon)
+                                    .resizable()
+                                    .frame(width: 32, height: 32)
+                            }
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Button(isFetchingIcon ? "获取中..." : "自动获取图标") {
+                                    fetchWebsiteIcon()
+                                }
+                                .disabled(path.isEmpty || isFetchingIcon)
+
+                                Button("选择本地图标...") {
+                                    selectImageFile()
+                                }
+                            }
+
+                            if customIcon != nil {
+                                Button("清除图标") {
+                                    customIcon = nil
+                                }
+                            }
+                        }
+                    }
                 }
             }
             .padding()
@@ -61,7 +96,7 @@ struct AddItemView: View {
             }
             .padding()
         }
-        .frame(width: 500, height: 300)
+        .frame(width: 500, height: itemType == .website ? 350 : 300)
     }
 
     private func selectApplication() {
@@ -80,11 +115,42 @@ struct AddItemView: View {
         }
     }
 
+    private func selectImageFile() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.allowedContentTypes = [.png, .jpeg, .image]
+        panel.message = "选择图标文件"
+
+        if panel.runModal() == .OK, let url = panel.url {
+            if let image = NSImage(contentsOf: url) {
+                customIcon = image
+            }
+        }
+    }
+
+    private func fetchWebsiteIcon() {
+        guard !path.isEmpty else { return }
+
+        isFetchingIcon = true
+        IconFetcher.shared.fetchFavicon(for: path) { image in
+            self.customIcon = image
+            self.isFetchingIcon = false
+        }
+    }
+
     private func addItem() {
+        var iconData: Data?
+        if let icon = customIcon, let tiffData = icon.tiffRepresentation {
+            iconData = tiffData
+        }
+
         let newItem = PanelItem(
             name: name,
             type: itemType,
             path: path,
+            iconData: iconData,
             browserPath: browserPath,
             order: DataManager.shared.items.count
         )
@@ -101,12 +167,15 @@ struct EditItemView: View {
     @State private var name: String
     @State private var path: String
     @State private var browserPath: String?
+    @State private var customIcon: NSImage?
+    @State private var isFetchingIcon = false
 
     init(item: PanelItem) {
         self.item = item
         _name = State(initialValue: item.name)
         _path = State(initialValue: item.path)
         _browserPath = State(initialValue: item.browserPath)
+        _customIcon = State(initialValue: item.iconData != nil ? NSImage(data: item.iconData!) : nil)
     }
 
     var body: some View {
@@ -126,8 +195,35 @@ struct EditItemView: View {
                         }
                     }
                 } else {
-                    TextField("网址", text: $path)
-                        .textContentType(.URL)
+                    VStack(alignment: .leading, spacing: 8) {
+                        TextField("网址", text: $path)
+                            .textContentType(.URL)
+
+                        HStack {
+                            if let icon = customIcon {
+                                Image(nsImage: icon)
+                                    .resizable()
+                                    .frame(width: 32, height: 32)
+                            }
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Button(isFetchingIcon ? "获取中..." : "自动获取图标") {
+                                    fetchWebsiteIcon()
+                                }
+                                .disabled(path.isEmpty || isFetchingIcon)
+
+                                Button("选择本地图标...") {
+                                    selectImageFile()
+                                }
+                            }
+
+                            if customIcon != nil {
+                                Button("清除图标") {
+                                    customIcon = nil
+                                }
+                            }
+                        }
+                    }
                 }
             }
             .padding()
@@ -148,7 +244,7 @@ struct EditItemView: View {
             }
             .padding()
         }
-        .frame(width: 500, height: 250)
+        .frame(width: 500, height: item.type == .website ? 300 : 250)
     }
 
     private func selectApplication() {
@@ -164,11 +260,42 @@ struct EditItemView: View {
         }
     }
 
+    private func selectImageFile() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.allowedContentTypes = [.png, .jpeg, .image]
+        panel.message = "选择图标文件"
+
+        if panel.runModal() == .OK, let url = panel.url {
+            if let image = NSImage(contentsOf: url) {
+                customIcon = image
+            }
+        }
+    }
+
+    private func fetchWebsiteIcon() {
+        guard !path.isEmpty else { return }
+
+        isFetchingIcon = true
+        IconFetcher.shared.fetchFavicon(for: path) { image in
+            self.customIcon = image
+            self.isFetchingIcon = false
+        }
+    }
+
     private func saveItem() {
+        var iconData: Data?
+        if let icon = customIcon, let tiffData = icon.tiffRepresentation {
+            iconData = tiffData
+        }
+
         var updatedItem = item
         updatedItem.name = name
         updatedItem.path = path
         updatedItem.browserPath = browserPath
+        updatedItem.iconData = iconData
 
         DataManager.shared.updateItem(updatedItem)
         dismiss()

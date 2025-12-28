@@ -118,6 +118,9 @@ struct ItemButton: View {
         case .website:
             AppLauncher.shared.openWebsite(url: item.path, browserPath: item.browserPath)
         }
+
+        // Hide panel after launching
+        NotificationCenter.default.post(name: .hidePanel, object: nil)
     }
 }
 
@@ -156,4 +159,9 @@ struct AddItemButton: View {
 #Preview {
     PanelView()
         .frame(width: 360, height: 340)
+}
+
+// MARK: - Notification Extension
+extension Notification.Name {
+    static let hidePanel = Notification.Name("hidePanel")
 }

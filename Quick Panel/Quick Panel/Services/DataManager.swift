@@ -28,10 +28,8 @@ class DataManager: ObservableObject {
         // Load data
         loadItems()
 
-        // If no items, create default ones
-        if items.isEmpty {
-            createDefaultItems()
-        }
+        // Don't create default items - let users add their own
+        print("📦 Loaded \(items.count) items. Users can add items using the '+' button.")
     }
 
     // MARK: - Load/Save
@@ -99,37 +97,11 @@ class DataManager: ObservableObject {
         saveItems()
     }
 
-    // MARK: - Default Items
+    // MARK: - Utility
 
-    private func createDefaultItems() {
-        print("📝 Creating default items...")
-
-        let defaultApps: [(String, String)] = [
-            ("Safari", "/Applications/Safari.app"),
-            ("Mail", "/Applications/Mail.app"),
-            ("Calendar", "/System/Applications/Calendar.app"),
-            ("Notes", "/System/Applications/Notes.app"),
-            ("Music", "/System/Applications/Music.app"),
-            ("Photos", "/System/Applications/Photos.app"),
-            ("Messages", "/System/Applications/Messages.app"),
-            ("FaceTime", "/System/Applications/FaceTime.app"),
-            ("Finder", "/System/Library/CoreServices/Finder.app"),
-            ("Terminal", "/System/Applications/Utilities/Terminal.app"),
-            ("Settings", "/System/Applications/System Settings.app"),
-            ("App Store", "/System/Applications/App Store.app")
-        ]
-
-        for (index, (name, path)) in defaultApps.enumerated() {
-            let item = PanelItem(
-                name: name,
-                type: .application,
-                path: path,
-                order: index
-            )
-            items.append(item)
-        }
-
+    func clearAllItems() {
+        items.removeAll()
         saveItems()
-        print("✅ Created \(items.count) default items")
+        print("🗑️ Cleared all items")
     }
 }

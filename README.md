@@ -154,12 +154,22 @@ open ~/Library/Developer/Xcode/DerivedData/Quick_Panel-*/Build/Products/Debug/Qu
 log stream --predicate 'process == "Quick Panel"' --level debug
 ```
 
-### 📝 当前硬编码的测试应用
+### 📝 配置说明
 
-MVP 包含以下12个预设应用：
-- Safari、Mail、Calendar、Notes
-- Music、Photos、Messages、FaceTime
-- Finder、Terminal、Settings、App Store
+#### 首次使用
+应用首次启动时面板为空，需要用户手动添加应用或网站：
+1. 点击面板中的"+"按钮
+2. 选择类型：应用程序或网站
+3. 填写信息并添加
+
+#### 清除配置
+如果需要清除所有配置重新开始：
+```bash
+cd "/Users/benxin/Code/Quick Panel"
+./clear_config.sh
+```
+
+配置文件位置：`~/Library/Application Support/Quick Panel/config.json`
 
 ### 🎯 下一步开发计划
 
