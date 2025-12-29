@@ -31,7 +31,7 @@ class AppLauncher {
     }
 
     func openWebsite(url: String, browserPath: String? = nil) {
-        guard let websiteURL = URL(string: url) else {
+        guard let websiteURL = URLNormalizer.normalizedURL(from: url) else {
             showError(message: "无效的网址")
             return
         }

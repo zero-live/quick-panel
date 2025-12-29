@@ -76,7 +76,9 @@ struct AddItemView: View {
                             .textContentType(.URL)
                             .onChange(of: path) { oldValue, newValue in
                                 // Auto-fill name from domain if name is empty
-                                if name.isEmpty, let url = URL(string: newValue), let host = url.host {
+                                if name.isEmpty,
+                                   let url = URLNormalizer.normalizedURL(from: newValue),
+                                   let host = url.host {
                                     name = host
                                 }
                             }
@@ -172,8 +174,14 @@ struct AddItemView: View {
     private func fetchWebsiteIcon() {
         guard !path.isEmpty else { return }
 
+        print("🧭 Fetch website icon: \(path)")
         isFetchingIcon = true
         IconFetcher.shared.fetchFavicon(for: path) { image in
+            if let image = image {
+                print("✅ Website icon fetched (\(image.size.width)x\(image.size.height)) for \(path)")
+            } else {
+                print("⚠️ Website icon fetch returned nil for \(path)")
+            }
             self.customIcon = image
             self.isFetchingIcon = false
         }
@@ -332,8 +340,14 @@ struct EditItemView: View {
     private func fetchWebsiteIcon() {
         guard !path.isEmpty else { return }
 
+        print("🧭 Fetch website icon (edit): \(path)")
         isFetchingIcon = true
         IconFetcher.shared.fetchFavicon(for: path) { image in
+            if let image = image {
+                print("✅ Website icon fetched (\(image.size.width)x\(image.size.height)) for \(path)")
+            } else {
+                print("⚠️ Website icon fetch returned nil for \(path)")
+            }
             self.customIcon = image
             self.isFetchingIcon = false
         }
