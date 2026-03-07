@@ -127,11 +127,16 @@ class PanelWindowManager {
             guard let window = window, event.window == window else { return event }
 
             let locationInWindow = event.locationInWindow
-            let windowHeight = window.frame.height
-
-            // Determine which layer based on mouse position
-            // Upper half = upper layer, lower half = lower layer
-            let isUpperLayer = locationInWindow.y > windowHeight / 2
+            
+            // Get actual layer heights from SettingsManager
+            let settings = SettingsManager.shared.settings
+            let lowerLayerHeight = settings.layerHeight
+            
+            // In macOS coordinates (bottom-left origin):
+            // - Lower layer occupies the bottom portion (y: 0 to lowerLayerHeight)
+            // - Upper layer occupies above that
+            // So if locationInWindow.y > lowerLayerHeight, it's in the upper layer
+            let isUpperLayer = locationInWindow.y > lowerLayerHeight
 
             if event.scrollingDeltaY > 5 {
                 // Scroll up - previous page
