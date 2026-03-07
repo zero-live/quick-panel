@@ -18,13 +18,22 @@ struct PanelView: View {
     @State private var lowerPage = 0
     @State private var lastActiveApp: (bundleId: String?, name: String) = (nil, "当前应用")
 
-    var columns: [GridItem] {
+    var upperColumns: [GridItem] {
         let settings = settingsManager.settings
-        return Array(repeating: GridItem(.fixed(70), spacing: settings.itemSpacing), count: settings.gridColumns)
+        return Array(repeating: GridItem(.fixed(70), spacing: settings.itemSpacing), count: settings.upperGridColumns)
     }
 
-    var itemsPerPage: Int {
-        settingsManager.settings.itemsPerPage
+    var lowerColumns: [GridItem] {
+        let settings = settingsManager.settings
+        return Array(repeating: GridItem(.fixed(70), spacing: settings.itemSpacing), count: settings.lowerGridColumns)
+    }
+
+    var upperItemsPerPage: Int {
+        settingsManager.settings.upperItemsPerPage
+    }
+
+    var lowerItemsPerPage: Int {
+        settingsManager.settings.lowerItemsPerPage
     }
 
     var upperItems: [PanelItem] {
@@ -43,11 +52,11 @@ struct PanelView: View {
     }
 
     var upperPageCount: Int {
-        max(1, Int(ceil(Double(max(upperItems.count, 1)) / Double(itemsPerPage))))
+        max(1, Int(ceil(Double(max(upperItems.count, 1)) / Double(upperItemsPerPage))))
     }
 
     var lowerPageCount: Int {
-        max(1, Int(ceil(Double(max(lowerItems.count, 1)) / Double(itemsPerPage))))
+        max(1, Int(ceil(Double(max(lowerItems.count, 1)) / Double(lowerItemsPerPage))))
     }
 
     var body: some View {
@@ -60,12 +69,12 @@ struct PanelView: View {
             LayerGridView(
                 items: upperItems,
                 page: $upperPage,
-                itemsPerPage: itemsPerPage,
+                itemsPerPage: upperItemsPerPage,
                 layer: .upper,
                 currentAppBundleId: nil,
                 currentAppName: nil,
                 title: "常用功能",
-                columns: columns,
+                columns: upperColumns,
                 onAdd: {
                     AddItemWindowManager.shared.showAddItemWindow(
                         layer: .upper,
@@ -83,12 +92,12 @@ struct PanelView: View {
             LayerGridView(
                 items: lowerItems,
                 page: $lowerPage,
-                itemsPerPage: itemsPerPage,
+                itemsPerPage: lowerItemsPerPage,
                 layer: .lower,
                 currentAppBundleId: currentAppBundleId,
                 currentAppName: currentAppName,
                 title: currentAppName,
-                columns: columns,
+                columns: lowerColumns,
                 onAdd: {
                     AddItemWindowManager.shared.showAddItemWindow(
                         layer: .lower,

@@ -52,7 +52,7 @@ class PanelWindowManager {
         // Get dynamic window size from settings
         let settings = SettingsManager.shared.settings
         let width = settings.panelWidth
-        let height = settings.layerHeight * 2 + 44  // Two layers + drag handle(24) + divider(20)
+        let height = settings.layerHeight(for: "upper") + settings.layerHeight(for: "lower") + 44  // Two layers + drag handle(24) + divider(20)
 
         let window = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: width, height: height),
@@ -130,7 +130,7 @@ class PanelWindowManager {
             
             // Get actual layer heights from SettingsManager
             let settings = SettingsManager.shared.settings
-            let lowerLayerHeight = settings.layerHeight
+            let lowerLayerHeight = settings.layerHeight(for: "lower")
             
             // In macOS coordinates (bottom-left origin):
             // - Lower layer occupies the bottom portion (y: 0 to lowerLayerHeight)
@@ -246,7 +246,7 @@ class PanelWindowManager {
 
         // Recalculate window size
         let width = settings.panelWidth
-        let height = settings.layerHeight * 2 + 44
+        let height = settings.layerHeight(for: "upper") + settings.layerHeight(for: "lower") + 44
 
         // Hide panel before resizing if it's visible
         let wasVisible = isVisible

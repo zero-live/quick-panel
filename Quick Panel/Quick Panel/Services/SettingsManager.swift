@@ -11,29 +11,51 @@ import Combine
 // MARK: - AppSettings Model
 
 struct AppSettings: Codable, Equatable {
-    var gridColumns: Int = 4        // 2-6
-    var gridRows: Int = 3           // 2-5
+    var upperGridColumns: Int = 4   // 3-5
+    var upperGridRows: Int = 3      // 3-5
+    var lowerGridColumns: Int = 4   // 3-5
+    var lowerGridRows: Int = 3      // 3-5
     var itemSpacing: CGFloat = 16   // 8-24
     var panelOpacity: Double = 1.0  // 0.5-1.0
     var launchAtLogin: Bool = false
 
     // Computed properties
-    var itemsPerPage: Int {
-        gridColumns * gridRows
+    var upperItemsPerPage: Int {
+        upperGridColumns * upperGridRows
+    }
+
+    var lowerItemsPerPage: Int {
+        lowerGridColumns * lowerGridRows
+    }
+
+    func itemsPerPage(for layer: String) -> Int {
+        layer == "upper" ? upperItemsPerPage : lowerItemsPerPage
+    }
+
+    func gridColumns(for layer: String) -> Int {
+        layer == "upper" ? upperGridColumns : lowerGridColumns
+    }
+
+    func gridRows(for layer: String) -> Int {
+        layer == "upper" ? upperGridRows : lowerGridRows
     }
 
     var panelWidth: CGFloat {
-        CGFloat(gridColumns) * 70 + CGFloat(gridColumns - 1) * itemSpacing + 40
+        let maxCols = max(upperGridColumns, lowerGridColumns)
+        return CGFloat(maxCols) * 70 + CGFloat(maxCols - 1) * itemSpacing + 40
     }
 
-    var layerHeight: CGFloat {
-        CGFloat(gridRows) * 90 + CGFloat(gridRows - 1) * itemSpacing + 48
+    func layerHeight(for layer: String) -> CGFloat {
+        let rows = gridRows(for: layer)
+        return CGFloat(rows) * 90 + CGFloat(rows - 1) * itemSpacing + 48
     }
 
     // Validation
     mutating func validate() {
-        gridColumns = max(2, min(6, gridColumns))
-        gridRows = max(2, min(5, gridRows))
+        upperGridColumns = max(3, min(5, upperGridColumns))
+        upperGridRows = max(3, min(5, upperGridRows))
+        lowerGridColumns = max(3, min(5, lowerGridColumns))
+        lowerGridRows = max(3, min(5, lowerGridRows))
         itemSpacing = max(8, min(24, itemSpacing))
         panelOpacity = max(0.5, min(1.0, panelOpacity))
     }
@@ -77,7 +99,7 @@ class SettingsManager: ObservableObject {
         self.settings = AppSettings.default
         loadSettings()
 
-        print("⚙️ Settings loaded: \(settings.gridColumns)x\(settings.gridRows) grid")
+        print("⚙️ Settings loaded: upper \(settings.upperGridColumns)x\(settings.upperGridRows), lower \(settings.lowerGridColumns)x\(settings.lowerGridRows)")
     }
 
     // MARK: - Load/Save

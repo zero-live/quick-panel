@@ -47,25 +47,38 @@ struct SettingsView: View {
 
 struct GridSettingsTab: View {
     @ObservedObject var settingsManager = SettingsManager.shared
-    @State private var tempColumns: Int = 4
-    @State private var tempRows: Int = 3
+    @State private var tempUpperColumns: Int = 4
+    @State private var tempUpperRows: Int = 3
+    @State private var tempLowerColumns: Int = 4
+    @State private var tempLowerRows: Int = 3
     @State private var tempSpacing: Double = 16
 
-    var previewItemsPerPage: Int {
-        tempColumns * tempRows
+    var previewUpperItemsPerPage: Int {
+        tempUpperColumns * tempUpperRows
+    }
+
+    var previewLowerItemsPerPage: Int {
+        tempLowerColumns * tempLowerRows
     }
 
     var previewPanelWidth: CGFloat {
-        CGFloat(tempColumns) * 70 + CGFloat(tempColumns - 1) * tempSpacing + 40
+        let maxCols = max(tempUpperColumns, tempLowerColumns)
+        return CGFloat(maxCols) * 70 + CGFloat(maxCols - 1) * tempSpacing + 40
     }
 
-    var previewLayerHeight: CGFloat {
-        CGFloat(tempRows) * 90 + CGFloat(tempRows - 1) * tempSpacing + 48
+    var previewUpperLayerHeight: CGFloat {
+        CGFloat(tempUpperRows) * 90 + CGFloat(tempUpperRows - 1) * tempSpacing + 48
+    }
+
+    var previewLowerLayerHeight: CGFloat {
+        CGFloat(tempLowerRows) * 90 + CGFloat(tempLowerRows - 1) * tempSpacing + 48
     }
 
     var hasChanges: Bool {
-        tempColumns != settingsManager.settings.gridColumns ||
-        tempRows != settingsManager.settings.gridRows ||
+        tempUpperColumns != settingsManager.settings.upperGridColumns ||
+        tempUpperRows != settingsManager.settings.upperGridRows ||
+        tempLowerColumns != settingsManager.settings.lowerGridColumns ||
+        tempLowerRows != settingsManager.settings.lowerGridRows ||
         tempSpacing != settingsManager.settings.itemSpacing
     }
 
@@ -74,25 +87,69 @@ struct GridSettingsTab: View {
             // Content area with ScrollView
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                    // Columns
+                    // Upper Layer Header
+                    HStack {
+                        Image(systemName: "square.grid.2x2")
+                            .foregroundColor(.blue)
+                            .frame(width: 24)
+                        Text("上层网格")
+                            .font(.system(size: 13, weight: .semibold))
+                        Spacer()
+                    }
+
+                    // Upper Columns
                     SettingRow(
                         icon: "square.split.2x1",
                         title: "列数",
                         subtitle: "每行显示的项目数量"
                     ) {
-                        Stepper("\(tempColumns)", value: $tempColumns, in: 2...6)
+                        Stepper("\(tempUpperColumns)", value: $tempUpperColumns, in: 3...5)
                             .frame(width: 80)
                     }
 
                     Divider()
 
-                    // Rows
+                    // Upper Rows
                     SettingRow(
                         icon: "square.split.1x2",
                         title: "行数",
                         subtitle: "每列显示的项目数量"
                     ) {
-                        Stepper("\(tempRows)", value: $tempRows, in: 2...5)
+                        Stepper("\(tempUpperRows)", value: $tempUpperRows, in: 3...5)
+                            .frame(width: 80)
+                    }
+
+                    Divider()
+
+                    // Lower Layer Header
+                    HStack {
+                        Image(systemName: "square.grid.2x2")
+                            .foregroundColor(.green)
+                            .frame(width: 24)
+                        Text("下层网格")
+                            .font(.system(size: 13, weight: .semibold))
+                        Spacer()
+                    }
+
+                    // Lower Columns
+                    SettingRow(
+                        icon: "square.split.2x1",
+                        title: "列数",
+                        subtitle: "每行显示的项目数量"
+                    ) {
+                        Stepper("\(tempLowerColumns)", value: $tempLowerColumns, in: 3...5)
+                            .frame(width: 80)
+                    }
+
+                    Divider()
+
+                    // Lower Rows
+                    SettingRow(
+                        icon: "square.split.1x2",
+                        title: "行数",
+                        subtitle: "每列显示的项目数量"
+                    ) {
+                        Stepper("\(tempLowerRows)", value: $tempLowerRows, in: 3...5)
                             .frame(width: 80)
                     }
 
@@ -135,8 +192,9 @@ struct GridSettingsTab: View {
                         }
 
                         VStack(spacing: 8) {
-                            PreviewRow(icon: "square.grid.3x3", label: "每页", value: "\(previewItemsPerPage) 项")
-                            PreviewRow(icon: "aspectratio", label: "尺寸", value: "\(Int(previewPanelWidth)) × \(Int(previewLayerHeight * 2 + 44)) pt")
+                            PreviewRow(icon: "square.grid.3x3", label: "上层", value: "\(previewUpperItemsPerPage) 项 (\(tempUpperColumns)×\(tempUpperRows))")
+                            PreviewRow(icon: "square.grid.3x3", label: "下层", value: "\(previewLowerItemsPerPage) 项 (\(tempLowerColumns)×\(tempLowerRows))")
+                            PreviewRow(icon: "aspectratio", label: "宽度", value: "\(Int(previewPanelWidth)) pt")
                         }
                         .padding(.leading, 32)
                     }
@@ -183,15 +241,19 @@ struct GridSettingsTab: View {
     }
 
     private func loadCurrentSettings() {
-        tempColumns = settingsManager.settings.gridColumns
-        tempRows = settingsManager.settings.gridRows
+        tempUpperColumns = settingsManager.settings.upperGridColumns
+        tempUpperRows = settingsManager.settings.upperGridRows
+        tempLowerColumns = settingsManager.settings.lowerGridColumns
+        tempLowerRows = settingsManager.settings.lowerGridRows
         tempSpacing = settingsManager.settings.itemSpacing
     }
 
     private func applyChanges() {
         settingsManager.batchUpdate { settings in
-            settings.gridColumns = tempColumns
-            settings.gridRows = tempRows
+            settings.upperGridColumns = tempUpperColumns
+            settings.upperGridRows = tempUpperRows
+            settings.lowerGridColumns = tempLowerColumns
+            settings.lowerGridRows = tempLowerRows
             settings.itemSpacing = tempSpacing
         }
     }
