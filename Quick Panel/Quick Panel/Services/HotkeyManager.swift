@@ -9,12 +9,49 @@ import Cocoa
 import Carbon
 import Combine
 
+// Carbon 事件回调必须是全局 C 函数，不能是闭包或方法
+private func carbonHotkeyCallback(
+    _ nextHandler: EventHandlerCallRef?,
+    _ event: EventRef?,
+    _ userData: UnsafeMutableRawPointer?
+) -> OSStatus {
+    guard let event = event else { return OSStatus(eventNotHandledErr) }
+
+    var hotkeyID = EventHotKeyID()
+    let status = GetEventParameter(
+        event,
+        EventParamName(kEventParamDirectObject),
+        EventParamType(typeEventHotKeyID),
+        nil,
+        MemoryLayout<EventHotKeyID>.size,
+        nil,
+        &hotkeyID
+    )
+
+    guard status == noErr else { return OSStatus(eventNotHandledErr) }
+
+    // 0x5150 = "QP" 签名
+    if hotkeyID.signature == 0x5150 && hotkeyID.id == 1 {
+        DispatchQueue.main.async {
+            print("⌨️ 全局快捷键触发！")
+            let location = NSEvent.mouseLocation
+            PanelWindowManager.shared?.togglePanel(at: location)
+        }
+        return noErr
+    }
+
+    return OSStatus(eventNotHandledErr)
+}
+
 class HotkeyManager: ObservableObject {
     static let shared = HotkeyManager()
 
     @Published var isEnabled: Bool = false
     @Published var currentKeyCode: UInt32 = 49       // Space
     @Published var currentModifiers: UInt32 = 0x0D00  // Cmd+Shift
+
+    private var hotkeyRef: EventHotKeyRef?
+    private var eventHandlerRef: EventHandlerRef?
 
     private init() {
         let settings = SettingsManager.shared.settings
@@ -25,7 +62,23 @@ class HotkeyManager: ObservableObject {
 
     // MARK: - Public API
 
+    func start() {
+        guard isEnabled else {
+            print("⌨️ 全局快捷键未启用")
+            return
+        }
+        installEventHandler()
+        registerHotkey()
+    }
+
+    func stop() {
+        unregisterHotkey()
+        removeEventHandler()
+    }
+
     func updateHotkey(keyCode: UInt32, modifiers: UInt32, enabled: Bool) {
+        unregisterHotkey()
+
         currentKeyCode = keyCode
         currentModifiers = modifiers
         isEnabled = enabled
@@ -36,7 +89,89 @@ class HotkeyManager: ObservableObject {
         settings.hotkeyEnabled = enabled
         SettingsManager.shared.settings = settings
 
-        print("⌨️ Hotkey updated: \(HotkeyManager.displayString(keyCode: keyCode, modifiers: modifiers)), enabled=\(enabled)")
+        if enabled {
+            if eventHandlerRef == nil {
+                installEventHandler()
+            }
+            registerHotkey()
+        } else {
+            removeEventHandler()
+        }
+
+        print("⌨️ 快捷键更新: \(HotkeyManager.displayString(keyCode: keyCode, modifiers: modifiers)), 启用=\(enabled)")
+    }
+
+    // MARK: - Carbon Event Handler
+
+    private func installEventHandler() {
+        guard eventHandlerRef == nil else { return }
+
+        var eventType = EventTypeSpec(
+            eventClass: OSType(kEventClassKeyboard),
+            eventKind: UInt32(kEventHotKeyPressed)
+        )
+
+        let status = InstallEventHandler(
+            GetEventDispatcherTarget(),
+            carbonHotkeyCallback,
+            1,
+            &eventType,
+            nil,
+            &eventHandlerRef
+        )
+
+        if status == noErr {
+            print("✅ Carbon 事件处理器已安装")
+        } else {
+            print("❌ 安装事件处理器失败: \(status)")
+        }
+    }
+
+    private func removeEventHandler() {
+        if let handler = eventHandlerRef {
+            RemoveEventHandler(handler)
+            eventHandlerRef = nil
+        }
+    }
+
+    private func registerHotkey() {
+        unregisterHotkey()
+
+        let carbonMods = carbonModifierFlags(from: currentModifiers)
+        let hotkeyID = EventHotKeyID(signature: 0x5150, id: 1) // "QP"
+
+        var ref: EventHotKeyRef?
+        let status = RegisterEventHotKey(
+            currentKeyCode,
+            carbonMods,
+            hotkeyID,
+            GetEventDispatcherTarget(),
+            0,
+            &ref
+        )
+
+        if status == noErr {
+            hotkeyRef = ref
+            print("✅ 全局快捷键已注册: \(HotkeyManager.displayString(keyCode: currentKeyCode, modifiers: currentModifiers))")
+        } else {
+            print("❌ 注册快捷键失败: \(status)")
+        }
+    }
+
+    private func unregisterHotkey() {
+        if let ref = hotkeyRef {
+            UnregisterEventHotKey(ref)
+            hotkeyRef = nil
+        }
+    }
+
+    private func carbonModifierFlags(from stored: UInt32) -> UInt32 {
+        var result: UInt32 = 0
+        if stored & UInt32(cmdKey) != 0 { result |= UInt32(cmdKey) }
+        if stored & UInt32(shiftKey) != 0 { result |= UInt32(shiftKey) }
+        if stored & UInt32(optionKey) != 0 { result |= UInt32(optionKey) }
+        if stored & UInt32(controlKey) != 0 { result |= UInt32(controlKey) }
+        return result
     }
 
     // MARK: - Display Helpers
@@ -78,5 +213,9 @@ class HotkeyManager: ObservableObject {
         if flags.contains(.option) { carbon |= UInt32(optionKey) }
         if flags.contains(.control) { carbon |= UInt32(controlKey) }
         return carbon
+    }
+
+    deinit {
+        stop()
     }
 }

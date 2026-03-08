@@ -11,6 +11,7 @@ import SwiftUI
 class AppDelegate: NSObject, NSApplicationDelegate {
     var panelWindowManager: PanelWindowManager?
     var mouseEventMonitor: MouseEventMonitor?
+    var hotkeyManager: HotkeyManager?
 
     private var hasLaunched = false
 
@@ -80,7 +81,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         mouseEventMonitor?.start()
 
-        _ = HotkeyManager.shared
+        hotkeyManager = HotkeyManager.shared
+        hotkeyManager?.start()
     }
 
     private func handleMiddleClick(at location: CGPoint) {
@@ -89,6 +91,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         mouseEventMonitor?.stop()
+        hotkeyManager?.stop()
     }
 
     private func checkSingleInstance() -> Bool {
