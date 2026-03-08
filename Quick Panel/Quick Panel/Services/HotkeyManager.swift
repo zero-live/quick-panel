@@ -13,46 +13,19 @@ class HotkeyManager: ObservableObject {
     static let shared = HotkeyManager()
 
     @Published var isEnabled: Bool = false
-    @Published var currentKeyCode: UInt32 = 49
-    @Published var currentModifiers: UInt32 = 0x0D00
-
-    private var eventTap: CFMachPort?
-    private var runLoopSource: CFRunLoopSource?
-    private var globalMonitor: Any?
-    private var localMonitor: Any?
+    @Published var currentKeyCode: UInt32 = 49       // Space
+    @Published var currentModifiers: UInt32 = 0x0D00  // Cmd+Shift
 
     private init() {
         let settings = SettingsManager.shared.settings
         isEnabled = settings.hotkeyEnabled
         currentKeyCode = settings.hotkeyKeyCode
         currentModifiers = settings.hotkeyModifiers
-
-        NotificationCenter.default.addObserver(
-            forName: .hotkeySettingsDidChange,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.reloadFromSettings()
-        }
     }
 
     // MARK: - Public API
 
-    func start() {
-        guard isEnabled else {
-            print("⌨️ Global hotkey disabled, skipping registration")
-            return
-        }
-        registerHotkey()
-    }
-
-    func stop() {
-        unregisterHotkey()
-    }
-
     func updateHotkey(keyCode: UInt32, modifiers: UInt32, enabled: Bool) {
-        unregisterHotkey()
-
         currentKeyCode = keyCode
         currentModifiers = modifiers
         isEnabled = enabled
@@ -63,145 +36,7 @@ class HotkeyManager: ObservableObject {
         settings.hotkeyEnabled = enabled
         SettingsManager.shared.settings = settings
 
-        if enabled {
-            registerHotkey()
-        }
-
         print("⌨️ Hotkey updated: \(HotkeyManager.displayString(keyCode: keyCode, modifiers: modifiers)), enabled=\(enabled)")
-    }
-
-    // MARK: - Registration via CGEvent Tap
-
-    private func registerHotkey() {
-        unregisterHotkey()
-
-        if startCGEventMonitor() {
-            print("✅ Global hotkey registered via CGEvent: \(HotkeyManager.displayString(keyCode: currentKeyCode, modifiers: currentModifiers))")
-        } else {
-            print("⚠️ CGEvent hotkey failed, trying NSEvent fallback...")
-            startNSEventMonitor()
-        }
-    }
-
-    private func startCGEventMonitor() -> Bool {
-        let eventMask = (1 << CGEventType.keyDown.rawValue)
-
-        guard let tap = CGEvent.tapCreate(
-            tap: .cgSessionEventTap,
-            place: .headInsertEventTap,
-            options: .listenOnly,
-            eventsOfInterest: CGEventMask(eventMask),
-            callback: { (_, type, event, refcon) -> Unmanaged<CGEvent>? in
-                guard let refcon = refcon else { return Unmanaged.passUnretained(event) }
-                let manager = Unmanaged<HotkeyManager>.fromOpaque(refcon).takeUnretainedValue()
-
-                if type == .keyDown {
-                    let keyCode = UInt32(event.getIntegerValueField(.keyboardEventKeycode))
-                    let flags = event.flags
-
-                    let eventModifiers = HotkeyManager.cgEventFlagsToCarbon(flags)
-
-                    if keyCode == manager.currentKeyCode && eventModifiers == manager.currentModifiers {
-                        DispatchQueue.main.async {
-                            manager.handleHotkeyPressed()
-                        }
-                    }
-                }
-
-                return Unmanaged.passUnretained(event)
-            },
-            userInfo: Unmanaged.passUnretained(self).toOpaque()
-        ) else {
-            print("❌ Failed to create CGEvent tap for hotkey")
-            return false
-        }
-
-        self.eventTap = tap
-        let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
-        CFRunLoopAddSource(CFRunLoopGetCurrent(), source, .commonModes)
-        CGEvent.tapEnable(tap: tap, enable: true)
-        self.runLoopSource = source
-        return true
-    }
-
-    private func startNSEventMonitor() {
-        let targetKeyCode = currentKeyCode
-        let targetModifiers = currentModifiers
-
-        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self = self else { return }
-            let eventModifiers = HotkeyManager.nsModifiersToCarbon(event.modifierFlags.intersection(.deviceIndependentFlagsMask))
-            if UInt32(event.keyCode) == targetKeyCode && eventModifiers == targetModifiers {
-                DispatchQueue.main.async {
-                    self.handleHotkeyPressed()
-                }
-            }
-        }
-
-        localMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self = self else { return event }
-            let eventModifiers = HotkeyManager.nsModifiersToCarbon(event.modifierFlags.intersection(.deviceIndependentFlagsMask))
-            if UInt32(event.keyCode) == targetKeyCode && eventModifiers == targetModifiers {
-                DispatchQueue.main.async {
-                    self.handleHotkeyPressed()
-                }
-                return nil
-            }
-            return event
-        }
-
-        if globalMonitor != nil {
-            print("✅ Global hotkey registered via NSEvent: \(HotkeyManager.displayString(keyCode: targetKeyCode, modifiers: targetModifiers))")
-        } else {
-            print("❌ Failed to register global hotkey via NSEvent")
-        }
-    }
-
-    private func unregisterHotkey() {
-        if let tap = eventTap {
-            CGEvent.tapEnable(tap: tap, enable: false)
-            if let source = runLoopSource {
-                CFRunLoopRemoveSource(CFRunLoopGetCurrent(), source, .commonModes)
-            }
-            CFMachPortInvalidate(tap)
-            eventTap = nil
-            runLoopSource = nil
-        }
-
-        if let monitor = globalMonitor {
-            NSEvent.removeMonitor(monitor)
-            globalMonitor = nil
-        }
-        if let monitor = localMonitor {
-            NSEvent.removeMonitor(monitor)
-            localMonitor = nil
-        }
-    }
-
-    private func handleHotkeyPressed() {
-        print("⌨️ Global hotkey pressed!")
-        let location = NSEvent.mouseLocation
-        PanelWindowManager.shared?.togglePanel(at: location)
-    }
-
-    private func reloadFromSettings() {
-        let settings = SettingsManager.shared.settings
-        updateHotkey(
-            keyCode: settings.hotkeyKeyCode,
-            modifiers: settings.hotkeyModifiers,
-            enabled: settings.hotkeyEnabled
-        )
-    }
-
-    // MARK: - Modifier Conversion
-
-    private static func cgEventFlagsToCarbon(_ flags: CGEventFlags) -> UInt32 {
-        var carbon: UInt32 = 0
-        if flags.contains(.maskCommand) { carbon |= UInt32(cmdKey) }
-        if flags.contains(.maskShift) { carbon |= UInt32(shiftKey) }
-        if flags.contains(.maskAlternate) { carbon |= UInt32(optionKey) }
-        if flags.contains(.maskControl) { carbon |= UInt32(controlKey) }
-        return carbon
     }
 
     // MARK: - Display Helpers
@@ -243,9 +78,5 @@ class HotkeyManager: ObservableObject {
         if flags.contains(.option) { carbon |= UInt32(optionKey) }
         if flags.contains(.control) { carbon |= UInt32(controlKey) }
         return carbon
-    }
-
-    deinit {
-        unregisterHotkey()
     }
 }

@@ -171,5 +171,4 @@ class SettingsManager: ObservableObject {
 
 extension Notification.Name {
     static let settingsDidChange = Notification.Name("settingsDidChange")
-    static let hotkeySettingsDidChange = Notification.Name("hotkeySettingsDidChange")
 }
