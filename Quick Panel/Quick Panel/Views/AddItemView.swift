@@ -16,6 +16,7 @@ struct AddItemView: View {
     let presetLayer: PanelLayer
     let presetAppBundleId: String?
     let presetAppName: String?
+    let targetPage: Int
 
     @State private var name = ""
     @State private var itemType: ItemType = .application
@@ -27,10 +28,11 @@ struct AddItemView: View {
     @State private var bindToCurrentApp = false
     @State private var selectedAppBundleId: String?
 
-    init(presetLayer: PanelLayer = .upper, presetAppBundleId: String? = nil, presetAppName: String? = nil) {
+    init(presetLayer: PanelLayer = .upper, presetAppBundleId: String? = nil, presetAppName: String? = nil, targetPage: Int = 0) {
         self.presetLayer = presetLayer
         self.presetAppBundleId = presetAppBundleId
         self.presetAppName = presetAppName
+        self.targetPage = targetPage
     }
 
     var body: some View {
@@ -194,6 +196,10 @@ struct AddItemView: View {
         }
 
         let layerItems = DataManager.shared.getItems(for: layer)
+        let settings = SettingsManager.shared.settings
+        let itemsPerPage = layer == .upper ? settings.upperItemsPerPage : settings.lowerItemsPerPage
+        let targetOrder = max(layerItems.count, targetPage * itemsPerPage)
+
         let newItem = PanelItem(
             name: name,
             type: itemType,
@@ -202,7 +208,7 @@ struct AddItemView: View {
             browserPath: browserPath,
             layer: layer,
             appBundleIdentifier: selectedAppBundleId,
-            order: layerItems.count
+            order: targetOrder
         )
 
         DataManager.shared.addItem(newItem)

@@ -16,14 +16,14 @@ class AddItemWindowManager {
 
     private init() {}
 
-    func showAddItemWindow(layer: PanelLayer = .upper, appBundleId: String? = nil, appName: String? = nil) {
-        // Close existing window if any
+    func showAddItemWindow(layer: PanelLayer = .upper, appBundleId: String? = nil, appName: String? = nil, page: Int = 0) {
         addWindow?.close()
 
         let addView = AddItemView(
             presetLayer: layer,
             presetAppBundleId: appBundleId,
-            presetAppName: appName
+            presetAppName: appName,
+            targetPage: page
         )
         let hostingController = NSHostingController(rootView: addView)
 
