@@ -255,6 +255,24 @@ struct LayerGridView: View {
                 Spacer()
 
                 HStack(spacing: 6) {
+                    if page > 0 {
+                        Button(action: {
+                            let deletingPage = page
+                            withAnimation {
+                                page = max(0, deletingPage - 1)
+                            }
+                            dataManager.deletePage(layer: layer, page: deletingPage, itemsPerPage: itemsPerPage)
+                        }) {
+                            Image(systemName: "minus")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundColor(.secondary.opacity(0.5))
+                                .frame(width: 14, height: 14)
+                                .background(Circle().fill(Color.secondary.opacity(0.15)))
+                        }
+                        .buttonStyle(.plain)
+                        .help("删除当前页")
+                    }
+
                     if pageCount > 1 {
                         Text("\(page + 1)/\(pageCount)")
                             .font(.system(size: 10))
@@ -380,18 +398,6 @@ struct LayerGridView: View {
                             .onTapGesture {
                                 withAnimation {
                                     page = index
-                                }
-                            }
-                            .contextMenu {
-                                if index > 0 {
-                                    Button("删除此页", role: .destructive) {
-                                        dataManager.deletePage(layer: layer, page: index, itemsPerPage: itemsPerPage)
-                                        withAnimation {
-                                            if page >= index && page > 0 {
-                                                page = page - 1
-                                            }
-                                        }
-                                    }
                                 }
                             }
                     }
