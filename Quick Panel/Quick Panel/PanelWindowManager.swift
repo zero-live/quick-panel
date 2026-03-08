@@ -17,6 +17,7 @@ class PanelWindowManager {
 
     private init() {
         setupNotifications()
+        setupPanelWindow()
     }
 
     private func setupNotifications() {
