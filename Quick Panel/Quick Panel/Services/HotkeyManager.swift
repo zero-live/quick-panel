@@ -32,10 +32,14 @@ private func carbonHotkeyCallback(
 
     // 0x5150 = "QP" 签名
     if hotkeyID.signature == 0x5150 && hotkeyID.id == 1 {
-        DispatchQueue.main.async {
+        DispatchQueue.main.async { @MainActor in
             print("⌨️ 全局快捷键触发！")
             let location = NSEvent.mouseLocation
-            PanelWindowManager.shared?.togglePanel(at: location)
+            if let manager = PanelWindowManager.shared {
+                manager.togglePanel(at: location)
+            } else {
+                print("❌ PanelWindowManager.shared 为 nil")
+            }
         }
         return noErr
     }
