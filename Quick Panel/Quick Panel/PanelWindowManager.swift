@@ -67,11 +67,12 @@ class PanelWindowManager {
         window.level = .floating
         window.collectionBehavior = [.canJoinAllSpaces, .stationary]
         window.isMovableByWindowBackground = false  // Disable automatic dragging
-        window.hasShadow = false  // Glass effect provides its own shadow
+        window.hasShadow = false
 
-        // No manual corner rounding needed — glassEffect handles the shape
         if let contentView = window.contentView {
             contentView.wantsLayer = true
+            contentView.layer?.cornerRadius = 18
+            contentView.layer?.masksToBounds = true
         }
 
         // Enable dragging only from specific view (drag handle)
