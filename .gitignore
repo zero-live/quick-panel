@@ -33,3 +33,14 @@ Carthage/Build/
 
 # Claude
 .claude/
+
+# Distribution
+dist/
+*.zip
+*.dmg
+
+# Temp files
+.sisyphus/
+.swift-module-cache/
+session-*.md
+package-lock.json
