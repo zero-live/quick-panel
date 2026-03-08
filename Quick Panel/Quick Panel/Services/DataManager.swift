@@ -174,4 +174,25 @@ class DataManager: ObservableObject {
         pageGroups.setGroupName(layer: layer, page: page, name: name)
         savePageGroups()
     }
+
+    func deletePage(layer: PanelLayer, page: Int, itemsPerPage: Int) {
+        let pageStartOrder = page * itemsPerPage
+        let pageEndOrder = pageStartOrder + itemsPerPage
+
+        items.removeAll { item in
+            item.layer == layer && item.order >= pageStartOrder && item.order < pageEndOrder
+        }
+
+        for index in items.indices {
+            if items[index].layer == layer && items[index].order >= pageEndOrder {
+                items[index].order -= itemsPerPage
+            }
+        }
+
+        pageGroups.removePage(layer: layer, page: page)
+
+        saveItems()
+        savePageGroups()
+        print("🗑️ Deleted page \(page) from \(layer) layer")
+    }
 }

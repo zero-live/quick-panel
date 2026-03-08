@@ -32,4 +32,21 @@ struct PageGroup: Codable {
             groups[layer.rawValue]?[page] = nil
         }
     }
+
+    mutating func removePage(layer: PanelLayer, page: Int) {
+        guard var layerGroups = groups[layer.rawValue] else { return }
+        
+        layerGroups.removeValue(forKey: page)
+        
+        var shifted: [Int: String] = [:]
+        for (key, value) in layerGroups {
+            if key > page {
+                shifted[key - 1] = value
+            } else {
+                shifted[key] = value
+            }
+        }
+        
+        groups[layer.rawValue] = shifted.isEmpty ? nil : shifted
+    }
 }

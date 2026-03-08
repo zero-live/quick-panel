@@ -382,6 +382,18 @@ struct LayerGridView: View {
                                     page = index
                                 }
                             }
+                            .contextMenu {
+                                if index > 0 {
+                                    Button("删除此页", role: .destructive) {
+                                        dataManager.deletePage(layer: layer, page: index, itemsPerPage: itemsPerPage)
+                                        withAnimation {
+                                            if page >= index && page > 0 {
+                                                page = page - 1
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                     }
                 }
                 .padding(.bottom, 8)

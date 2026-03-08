@@ -14,6 +14,7 @@ class PanelWindowManager {
     private var panelWindow: NSWindow?
     private var isVisible = false
     private var windowCreated = false
+    private var lastScrollTime: TimeInterval = 0
 
     private init() {
         setupNotifications()
@@ -125,30 +126,28 @@ class PanelWindowManager {
     }
 
     private func setupScrollWheelHandler(for window: NSWindow) {
-        NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel]) { [weak window] event in
-            guard let window = window, event.window == window else { return event }
+        NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel]) { [weak self, weak window] event in
+            guard let self = self, let window = window, event.window == window else { return event }
+
+            let now = ProcessInfo.processInfo.systemUptime
+            guard now - self.lastScrollTime > 0.3 else { return event }
 
             let locationInWindow = event.locationInWindow
             
-            // Get actual layer heights from SettingsManager
             let settings = SettingsManager.shared.settings
             let lowerLayerHeight = settings.layerHeight(for: .lower)
             
-            // In macOS coordinates (bottom-left origin):
-            // - Lower layer occupies the bottom portion (y: 0 to lowerLayerHeight)
-            // - Upper layer occupies above that
-            // So if locationInWindow.y > lowerLayerHeight, it's in the upper layer
             let isUpperLayer = locationInWindow.y > lowerLayerHeight
 
-            if event.scrollingDeltaY > 5 {
-                // Scroll up - previous page
+            if event.scrollingDeltaY > 3 {
+                self.lastScrollTime = now
                 NotificationCenter.default.post(
                     name: .scrollPreviousPage,
                     object: nil,
                     userInfo: ["layer": isUpperLayer ? "upper" : "lower"]
                 )
-            } else if event.scrollingDeltaY < -5 {
-                // Scroll down - next page
+            } else if event.scrollingDeltaY < -3 {
+                self.lastScrollTime = now
                 NotificationCenter.default.post(
                     name: .scrollNextPage,
                     object: nil,
