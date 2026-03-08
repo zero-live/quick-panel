@@ -25,8 +25,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Check for existing instances
         if !checkSingleInstance() {
             print("❌ Another instance is already running, exiting...")
-            NSApp.terminate(nil)
-            return
+            exit(0)
         }
 
         // Hide the default window
