@@ -8,6 +8,11 @@
 import Foundation
 import Combine
 
+enum PanelLayer: String, Codable {
+    case upper = "upper"
+    case lower = "lower"
+}
+
 // MARK: - AppSettings Model
 
 struct AppSettings: Codable, Equatable {
@@ -16,6 +21,8 @@ struct AppSettings: Codable, Equatable {
     var lowerGridColumns: Int = 4   // 3-5
     var lowerGridRows: Int = 3      // 3-5
     var itemSpacing: CGFloat = 16   // 8-24
+    var cellWidth: CGFloat = 70     // 50-100
+    var cellHeight: CGFloat = 90    // 60-120
     var panelOpacity: Double = 1.0  // 0.5-1.0
     var launchAtLogin: Bool = false
 
@@ -28,26 +35,26 @@ struct AppSettings: Codable, Equatable {
         lowerGridColumns * lowerGridRows
     }
 
-    func itemsPerPage(for layer: String) -> Int {
-        layer == "upper" ? upperItemsPerPage : lowerItemsPerPage
+    func itemsPerPage(for layer: PanelLayer) -> Int {
+        layer == .upper ? upperItemsPerPage : lowerItemsPerPage
     }
 
-    func gridColumns(for layer: String) -> Int {
-        layer == "upper" ? upperGridColumns : lowerGridColumns
+    func gridColumns(for layer: PanelLayer) -> Int {
+        layer == .upper ? upperGridColumns : lowerGridColumns
     }
 
-    func gridRows(for layer: String) -> Int {
-        layer == "upper" ? upperGridRows : lowerGridRows
+    func gridRows(for layer: PanelLayer) -> Int {
+        layer == .upper ? upperGridRows : lowerGridRows
     }
 
     var panelWidth: CGFloat {
         let maxCols = max(upperGridColumns, lowerGridColumns)
-        return CGFloat(maxCols) * 70 + CGFloat(maxCols - 1) * itemSpacing + 40
+        return CGFloat(maxCols) * cellWidth + CGFloat(maxCols - 1) * itemSpacing + 40
     }
 
-    func layerHeight(for layer: String) -> CGFloat {
+    func layerHeight(for layer: PanelLayer) -> CGFloat {
         let rows = gridRows(for: layer)
-        return CGFloat(rows) * 90 + CGFloat(rows - 1) * itemSpacing + 48
+        return CGFloat(rows) * cellHeight + CGFloat(rows - 1) * itemSpacing + 48
     }
 
     // Validation
@@ -57,6 +64,8 @@ struct AppSettings: Codable, Equatable {
         lowerGridColumns = max(3, min(5, lowerGridColumns))
         lowerGridRows = max(3, min(5, lowerGridRows))
         itemSpacing = max(8, min(24, itemSpacing))
+        cellWidth = max(50, min(100, cellWidth))
+        cellHeight = max(60, min(120, cellHeight))
         panelOpacity = max(0.5, min(1.0, panelOpacity))
     }
 
