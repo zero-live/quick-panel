@@ -74,14 +74,7 @@ struct PanelView: View {
                 currentAppBundleId: nil,
                 currentAppName: nil,
                 title: "常用功能",
-                columns: upperColumns,
-                onAdd: {
-                    AddItemWindowManager.shared.showAddItemWindow(
-                        layer: .upper,
-                        appBundleId: nil,
-                        appName: nil
-                    )
-                }
+                columns: upperColumns
             )
 
             // Divider
@@ -97,14 +90,7 @@ struct PanelView: View {
                 currentAppBundleId: currentAppBundleId,
                 currentAppName: currentAppName,
                 title: currentAppName,
-                columns: lowerColumns,
-                onAdd: {
-                    AddItemWindowManager.shared.showAddItemWindow(
-                        layer: .lower,
-                        appBundleId: currentAppBundleId,
-                        appName: currentAppName
-                    )
-                }
+                columns: lowerColumns
             )
             .id("\(currentAppBundleId ?? "none")-\(lowerItems.count)")
         }
@@ -164,7 +150,6 @@ struct LayerGridView: View {
     let currentAppName: String?
     let title: String
     let columns: [GridItem]
-    let onAdd: () -> Void
 
     @ObservedObject private var dataManager = DataManager.shared
     @State private var showingGroupNameEditor = false
@@ -262,15 +247,26 @@ struct LayerGridView: View {
 
                 Spacer()
 
-                // Right: Page count
-                if pageCount > 1 {
-                    Text("\(page + 1)/\(pageCount)")
-                        .font(.system(size: 10))
-                        .foregroundColor(.secondary.opacity(0.6))
-                } else {
-                    // Empty space to balance layout
-                    Text("")
-                        .font(.system(size: 10))
+                HStack(spacing: 6) {
+                    if pageCount > 1 {
+                        Text("\(page + 1)/\(pageCount)")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary.opacity(0.6))
+                    }
+
+                    Button(action: {
+                        withAnimation {
+                            page = pageCount
+                        }
+                    }) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundColor(.secondary.opacity(0.5))
+                            .frame(width: 14, height: 14)
+                            .background(Circle().fill(Color.secondary.opacity(0.15)))
+                    }
+                    .buttonStyle(.plain)
+                    .help("新建页面")
                 }
             }
             .padding(.horizontal, 20)
@@ -353,7 +349,8 @@ struct LayerGridView: View {
                     EmptySlotView(
                         layer: layer,
                         currentAppBundleId: currentAppBundleId,
-                        onAdd: onAdd
+                        currentAppName: currentAppName,
+                        page: page
                     )
                 }
             }
@@ -361,8 +358,8 @@ struct LayerGridView: View {
             .padding(.bottom, 16)
             .animation(.spring(response: 0.3, dampingFraction: 0.7), value: currentPageItems.map { $0.id })
 
-            HStack(spacing: 6) {
-                if pageCount > 1 {
+            if pageCount > 1 {
+                HStack(spacing: 6) {
                     ForEach(0..<pageCount, id: \.self) { index in
                         Circle()
                             .fill(page == index ? Color.accentColor : Color.secondary.opacity(0.3))
@@ -374,22 +371,8 @@ struct LayerGridView: View {
                             }
                     }
                 }
-
-                Button(action: {
-                    withAnimation {
-                        page = pageCount
-                    }
-                }) {
-                    Image(systemName: "plus")
-                        .font(.system(size: 8, weight: .bold))
-                        .foregroundColor(.secondary.opacity(0.5))
-                        .frame(width: 14, height: 14)
-                        .background(Circle().fill(Color.secondary.opacity(0.15)))
-                }
-                .buttonStyle(.plain)
-                .help("新建页面")
+                .padding(.bottom, 8)
             }
-            .padding(.bottom, 8)
         }
     }
 }
@@ -398,7 +381,8 @@ struct LayerGridView: View {
 struct EmptySlotView: View {
     let layer: PanelLayer
     let currentAppBundleId: String?
-    let onAdd: () -> Void
+    let currentAppName: String?
+    let page: Int
     @State private var isHovered = false
 
     var body: some View {
@@ -424,7 +408,12 @@ struct EmptySlotView: View {
             isHovered = hovering
         }
         .onTapGesture {
-            onAdd()
+            AddItemWindowManager.shared.showAddItemWindow(
+                layer: layer,
+                appBundleId: currentAppBundleId,
+                appName: currentAppName,
+                page: page
+            )
         }
     }
 }
