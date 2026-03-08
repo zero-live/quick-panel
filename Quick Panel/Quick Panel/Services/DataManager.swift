@@ -13,26 +13,26 @@ class DataManager: ObservableObject {
 
     @Published var items: [PanelItem] = []
     @Published var pageGroups = PageGroup()
+    @Published var pageCounts: [String: Int] = [:]
 
     private let configDirectory: URL
     private let configFile: URL
     private let groupsFile: URL
+    private let pageCountsFile: URL
 
     private init() {
-        // Setup config directory
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         configDirectory = appSupport.appendingPathComponent("Quick Panel")
         configFile = configDirectory.appendingPathComponent("config.json")
         groupsFile = configDirectory.appendingPathComponent("groups.json")
+        pageCountsFile = configDirectory.appendingPathComponent("pagecounts.json")
 
-        // Create directory if needed
         try? FileManager.default.createDirectory(at: configDirectory, withIntermediateDirectories: true)
 
-        // Load data
         loadItems()
         loadPageGroups()
+        loadPageCounts()
 
-        // Don't create default items - let users add their own
         print("📦 Loaded \(items.count) items. Users can add items using the '+' button.")
     }
 
@@ -175,6 +175,43 @@ class DataManager: ObservableObject {
         savePageGroups()
     }
 
+    // MARK: - Page Counts
+
+    func loadPageCounts() {
+        guard FileManager.default.fileExists(atPath: pageCountsFile.path) else {
+            return
+        }
+        do {
+            let data = try Data(contentsOf: pageCountsFile)
+            pageCounts = try JSONDecoder().decode([String: Int].self, from: data)
+            print("✅ Loaded page counts: \(pageCounts)")
+        } catch {
+            print("❌ Failed to load page counts: \(error.localizedDescription)")
+        }
+    }
+
+    func savePageCounts() {
+        do {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try encoder.encode(pageCounts)
+            try data.write(to: pageCountsFile)
+        } catch {
+            print("❌ Failed to save page counts: \(error.localizedDescription)")
+        }
+    }
+
+    func getPageCount(for layer: PanelLayer) -> Int {
+        return pageCounts[layer.rawValue] ?? 1
+    }
+
+    func addPage(layer: PanelLayer) -> Int {
+        let current = getPageCount(for: layer)
+        pageCounts[layer.rawValue] = current + 1
+        savePageCounts()
+        return current
+    }
+
     func deletePage(layer: PanelLayer, page: Int, itemsPerPage: Int) {
         let pageStartOrder = page * itemsPerPage
         let pageEndOrder = pageStartOrder + itemsPerPage
@@ -191,8 +228,12 @@ class DataManager: ObservableObject {
 
         pageGroups.removePage(layer: layer, page: page)
 
+        let current = getPageCount(for: layer)
+        pageCounts[layer.rawValue] = max(1, current - 1)
+
         saveItems()
         savePageGroups()
-        print("🗑️ Deleted page \(page) from \(layer) layer")
+        savePageCounts()
+        print("🗑️ Deleted page \(page) from \(layer) layer, new count: \(pageCounts[layer.rawValue] ?? 1)")
     }
 }

@@ -156,18 +156,7 @@ struct LayerGridView: View {
     @State private var editingGroupName = ""
 
     var pageCount: Int {
-        let maxOrder = items.map(\.order).max() ?? 0
-        let pagesFromOrder = Int(ceil(Double(maxOrder + 1) / Double(itemsPerPage)))
-        let pagesFromCount = Int(ceil(Double(max(items.count, 1)) / Double(itemsPerPage)))
-        
-        let maxGroupPage = dataManager.pageGroups.maxPage(for: layer)
-        let pagesFromGroups = maxGroupPage + 1
-        
-        let dataPages = max(1, max(pagesFromOrder, max(pagesFromCount, pagesFromGroups)))
-        if page >= dataPages {
-            return page + 1
-        }
-        return dataPages
+        dataManager.getPageCount(for: layer)
     }
 
     private func validatePage() {
@@ -258,10 +247,10 @@ struct LayerGridView: View {
                     if page > 0 {
                         Button(action: {
                             let deletingPage = page
+                            dataManager.deletePage(layer: layer, page: deletingPage, itemsPerPage: itemsPerPage)
                             withAnimation {
                                 page = max(0, deletingPage - 1)
                             }
-                            dataManager.deletePage(layer: layer, page: deletingPage, itemsPerPage: itemsPerPage)
                         }) {
                             Image(systemName: "minus")
                                 .font(.system(size: 9, weight: .bold))
@@ -280,7 +269,7 @@ struct LayerGridView: View {
                     }
 
                     Button(action: {
-                        let newPage = pageCount
+                        let newPage = dataManager.addPage(layer: layer)
                         dataManager.setPageGroup(
                             layer: layer,
                             page: newPage,
