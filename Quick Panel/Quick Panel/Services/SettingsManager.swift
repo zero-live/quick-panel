@@ -20,6 +20,9 @@ struct AppSettings: Codable, Equatable {
     var cellHeight: CGFloat = 90    // 60-120
     var panelOpacity: Double = 1.0  // 0.5-1.0
     var launchAtLogin: Bool = false
+    var hotkeyEnabled: Bool = false
+    var hotkeyKeyCode: UInt32 = 49       // Default: Space (keyCode 49)
+    var hotkeyModifiers: UInt32 = 0x0D00 // Default: Cmd+Shift (cmdKey | shiftKey)
 
     // Computed properties
     var upperItemsPerPage: Int {
@@ -168,4 +171,5 @@ class SettingsManager: ObservableObject {
 
 extension Notification.Name {
     static let settingsDidChange = Notification.Name("settingsDidChange")
+    static let hotkeySettingsDidChange = Notification.Name("hotkeySettingsDidChange")
 }
