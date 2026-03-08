@@ -9,11 +9,13 @@ import Cocoa
 import SwiftUI
 
 class PanelWindowManager {
+    static let shared = PanelWindowManager()
+
     private var panelWindow: NSWindow?
     private var isVisible = false
     private var windowCreated = false
 
-    init() {
+    private init() {
         setupNotifications()
     }
 

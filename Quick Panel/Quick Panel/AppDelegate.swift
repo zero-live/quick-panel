@@ -9,7 +9,6 @@ import Cocoa
 import SwiftUI
 
 class AppDelegate: NSObject, NSApplicationDelegate {
-    var panelWindowManager: PanelWindowManager?
     var mouseEventMonitor: MouseEventMonitor?
     var hotkeyManager: HotkeyManager?
 
@@ -72,7 +71,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         // Initialize panel window manager
-        panelWindowManager = PanelWindowManager()
+        _ = PanelWindowManager.shared
 
         // Initialize mouse event monitor
         mouseEventMonitor = MouseEventMonitor { [weak self] location in
@@ -86,7 +85,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func handleMiddleClick(at location: CGPoint) {
-        panelWindowManager?.togglePanel(at: location)
+        PanelWindowManager.shared.togglePanel(at: location)
     }
 
     func applicationWillTerminate(_ notification: Notification) {

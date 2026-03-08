@@ -35,11 +35,7 @@ private func carbonHotkeyCallback(
         DispatchQueue.main.async { @MainActor in
             print("⌨️ 全局快捷键触发！")
             let location = NSEvent.mouseLocation
-            if let manager = PanelWindowManager.shared {
-                manager.togglePanel(at: location)
-            } else {
-                print("❌ PanelWindowManager.shared 为 nil")
-            }
+            PanelWindowManager.shared.togglePanel(at: location)
         }
         return noErr
     }

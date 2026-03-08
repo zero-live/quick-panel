@@ -103,7 +103,7 @@ class StatusBarManager {
         print("🎯 Toggling panel from status bar")
         // Get mouse location and toggle panel
         let location = NSEvent.mouseLocation
-        PanelWindowManager.shared?.togglePanel(at: location)
+        PanelWindowManager.shared.togglePanel(at: location)
     }
 
     @objc private func showAbout() {
@@ -120,14 +120,7 @@ class StatusBarManager {
 // MARK: - PanelWindowManager Access
 
 extension StatusBarManager {
-    private var panelWindowManager: PanelWindowManager? {
-        return (NSApplication.shared.delegate as? AppDelegate)?.panelWindowManager
-    }
-}
-
-// Extension to access PanelWindowManager from StatusBarManager
-extension PanelWindowManager {
-    static var shared: PanelWindowManager? {
-        return (NSApplication.shared.delegate as? AppDelegate)?.panelWindowManager
+    private var panelWindowManager: PanelWindowManager {
+        return PanelWindowManager.shared
     }
 }
