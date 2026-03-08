@@ -108,9 +108,7 @@ struct PanelView: View {
             )
             .id("\(currentAppBundleId ?? "none")-\(lowerItems.count)")
         }
-        .background(.ultraThinMaterial)
-        .cornerRadius(12)
-        .shadow(color: Color.black.opacity(0.2), radius: 20, x: 0, y: 10)
+        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18))
         .onAppear {
             setupPanelShowObserver()
         }
