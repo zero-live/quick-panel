@@ -171,7 +171,11 @@ struct LayerGridView: View {
     @State private var editingGroupName = ""
 
     var pageCount: Int {
-        max(1, Int(ceil(Double(max(items.count, 1)) / Double(itemsPerPage))))
+        let dataPages = max(1, Int(ceil(Double(max(items.count, 1)) / Double(itemsPerPage))))
+        if page >= dataPages {
+            return page + 1
+        }
+        return dataPages
     }
 
     private func validatePage() {
@@ -357,9 +361,8 @@ struct LayerGridView: View {
             .padding(.bottom, 16)
             .animation(.spring(response: 0.3, dampingFraction: 0.7), value: currentPageItems.map { $0.id })
 
-            // Page indicator if multiple pages
-            if pageCount > 1 {
-                HStack(spacing: 6) {
+            HStack(spacing: 6) {
+                if pageCount > 1 {
                     ForEach(0..<pageCount, id: \.self) { index in
                         Circle()
                             .fill(page == index ? Color.accentColor : Color.secondary.opacity(0.3))
@@ -371,8 +374,22 @@ struct LayerGridView: View {
                             }
                     }
                 }
-                .padding(.bottom, 8)
+
+                Button(action: {
+                    withAnimation {
+                        page = pageCount
+                    }
+                }) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundColor(.secondary.opacity(0.5))
+                        .frame(width: 14, height: 14)
+                        .background(Circle().fill(Color.secondary.opacity(0.15)))
+                }
+                .buttonStyle(.plain)
+                .help("新建页面")
             }
+            .padding(.bottom, 8)
         }
     }
 }
