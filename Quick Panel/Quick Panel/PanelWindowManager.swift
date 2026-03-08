@@ -197,9 +197,9 @@ class PanelWindowManager {
         if let screen = NSScreen.main {
             let screenFrame = screen.visibleFrame
 
-            // Offset from mouse cursor
-            origin.x += 10
-            origin.y -= windowSize.height + 10
+            // Center panel on mouse cursor
+            origin.x = location.x - windowSize.width / 2
+            origin.y = location.y - windowSize.height / 2
 
             // Keep within screen bounds
             if origin.x + windowSize.width > screenFrame.maxX {
