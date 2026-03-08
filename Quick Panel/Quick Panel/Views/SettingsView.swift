@@ -496,12 +496,60 @@ struct ItemManagementTab: View {
 
 struct AdvancedTab: View {
     @ObservedObject var settingsManager = SettingsManager.shared
+    @ObservedObject var hotkeyManager = HotkeyManager.shared
     @State private var showingResetAlert = false
+    @State private var isRecordingHotkey = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                // Launch at Login
+                VStack(alignment: .leading, spacing: 16) {
+                    SettingRow(
+                        icon: "keyboard",
+                        title: "全局快捷键",
+                        subtitle: "使用键盘快捷键呼出/隐藏面板"
+                    ) {
+                        Toggle("", isOn: Binding(
+                            get: { hotkeyManager.isEnabled },
+                            set: { newValue in
+                                hotkeyManager.updateHotkey(
+                                    keyCode: hotkeyManager.currentKeyCode,
+                                    modifiers: hotkeyManager.currentModifiers,
+                                    enabled: newValue
+                                )
+                            }
+                        ))
+                        .labelsHidden()
+                    }
+
+                    if hotkeyManager.isEnabled {
+                        HStack(spacing: 12) {
+                            Text("快捷键")
+                                .font(.system(size: 12))
+                                .foregroundColor(.secondary)
+
+                            HotkeyRecorderView(
+                                keyCode: hotkeyManager.currentKeyCode,
+                                modifiers: hotkeyManager.currentModifiers,
+                                isRecording: $isRecordingHotkey,
+                                onHotkeyRecorded: { keyCode, modifiers in
+                                    hotkeyManager.updateHotkey(
+                                        keyCode: keyCode,
+                                        modifiers: modifiers,
+                                        enabled: true
+                                    )
+                                }
+                            )
+
+                            Spacer()
+                        }
+                        .padding(.leading, 36)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                    }
+                }
+
+                Divider()
+
                 SettingRow(
                     icon: "power",
                     title: "开机自启动",
@@ -521,7 +569,6 @@ struct AdvancedTab: View {
 
                 Divider()
 
-                // Reset Settings
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
                         Image(systemName: "arrow.counterclockwise")
@@ -557,7 +604,6 @@ struct AdvancedTab: View {
 
                 Divider()
 
-                // App Information
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
                         Image(systemName: "info.circle")
@@ -575,6 +621,120 @@ struct AdvancedTab: View {
                 }
             }
             .padding(24)
+            .animation(.easeInOut(duration: 0.2), value: hotkeyManager.isEnabled)
+        }
+    }
+}
+
+// MARK: - Hotkey Recorder View
+
+struct HotkeyRecorderView: View {
+    let keyCode: UInt32
+    let modifiers: UInt32
+    @Binding var isRecording: Bool
+    let onHotkeyRecorded: (UInt32, UInt32) -> Void
+
+    var displayText: String {
+        if isRecording {
+            return "请按下快捷键..."
+        }
+        return HotkeyManager.displayString(keyCode: keyCode, modifiers: modifiers)
+    }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(displayText)
+                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .foregroundColor(isRecording ? .orange : .primary)
+
+            if isRecording {
+                Button(action: { isRecording = false }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(isRecording ? Color.orange.opacity(0.1) : Color.secondary.opacity(0.1))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(isRecording ? Color.orange : Color.secondary.opacity(0.3), lineWidth: 1)
+        )
+        .onTapGesture {
+            isRecording = true
+        }
+        .background(
+            HotkeyRecorderNSView(
+                isRecording: $isRecording,
+                onHotkeyRecorded: onHotkeyRecorded
+            )
+            .frame(width: 0, height: 0)
+        )
+    }
+}
+
+// MARK: - NSView Bridge for Key Event Capture
+
+struct HotkeyRecorderNSView: NSViewRepresentable {
+    @Binding var isRecording: Bool
+    let onHotkeyRecorded: (UInt32, UInt32) -> Void
+
+    func makeNSView(context: Context) -> KeyCaptureView {
+        let view = KeyCaptureView()
+        view.onKeyRecorded = { keyCode, modifiers in
+            onHotkeyRecorded(keyCode, modifiers)
+            DispatchQueue.main.async {
+                isRecording = false
+            }
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: KeyCaptureView, context: Context) {
+        nsView.isRecordingActive = isRecording
+        if isRecording {
+            nsView.window?.makeFirstResponder(nsView)
+        }
+    }
+}
+
+class KeyCaptureView: NSView {
+    var onKeyRecorded: ((UInt32, UInt32) -> Void)?
+    var isRecordingActive = false
+    private var localMonitor: Any?
+
+    override var acceptsFirstResponder: Bool { true }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        setupMonitor()
+    }
+
+    private func setupMonitor() {
+        localMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self = self, self.isRecordingActive else { return event }
+
+            let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            let hasModifier = modifiers.contains(.command) || modifiers.contains(.control) || modifiers.contains(.option)
+
+            guard hasModifier else { return event }
+
+            let carbonMods = HotkeyManager.nsModifiersToCarbon(modifiers)
+            self.onKeyRecorded?(UInt32(event.keyCode), carbonMods)
+
+            return nil
+        }
+    }
+
+    deinit {
+        if let monitor = localMonitor {
+            NSEvent.removeMonitor(monitor)
         }
     }
 }
