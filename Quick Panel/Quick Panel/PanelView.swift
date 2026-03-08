@@ -139,7 +139,10 @@ struct PanelView: View {
             updateCurrentApp()
         }
 
-        // Initialize with current app
+        if let frontApp = NSWorkspace.shared.frontmostApplication,
+           frontApp.bundleIdentifier != Bundle.main.bundleIdentifier {
+            lastActiveApp = (frontApp.bundleIdentifier, frontApp.localizedName ?? "当前应用")
+        }
         updateCurrentApp()
     }
 
