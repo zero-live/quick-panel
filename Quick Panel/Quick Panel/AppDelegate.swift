@@ -81,6 +81,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         hotkeyManager = HotkeyManager.shared
         hotkeyManager?.start()
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
+            UpdateManager.shared.checkForUpdates(silent: true)
+        }
     }
 
     private func handleMiddleClick(at location: CGPoint) {

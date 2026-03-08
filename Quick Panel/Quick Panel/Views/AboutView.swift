@@ -8,6 +8,8 @@
 import SwiftUI
 
 struct AboutView: View {
+    @ObservedObject var updateManager = UpdateManager.shared
+
     var appVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
     }
@@ -18,7 +20,6 @@ struct AboutView: View {
 
     var body: some View {
         VStack(spacing: 20) {
-            // App Icon
             if let appIcon = NSApplication.shared.applicationIconImage {
                 Image(nsImage: appIcon)
                     .resizable()
@@ -26,11 +27,9 @@ struct AboutView: View {
                     .shadow(radius: 5)
             }
 
-            // App Name
             Text("Quick Panel")
                 .font(.system(size: 28, weight: .bold))
 
-            // Version
             Text("版本 \(appVersion) (\(buildNumber))")
                 .font(.system(size: 14))
                 .foregroundColor(.secondary)
@@ -38,7 +37,6 @@ struct AboutView: View {
             Divider()
                 .padding(.horizontal, 40)
 
-            // Description
             Text("macOS 快捷面板工具")
                 .font(.system(size: 14))
                 .foregroundColor(.secondary)
@@ -49,14 +47,42 @@ struct AboutView: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 40)
 
+            VStack(spacing: 8) {
+                if updateManager.isChecking {
+                    HStack(spacing: 6) {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                        Text("检查更新中...")
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+                    }
+                } else if updateManager.hasUpdate, let latest = updateManager.latestVersion {
+                    VStack(spacing: 6) {
+                        Text("🎉 发现新版本 v\(latest)")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(.green)
+                        Button("立即更新") {
+                            updateManager.downloadAndInstall()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                    }
+                } else {
+                    Button("检查更新") {
+                        updateManager.checkForUpdates(silent: false)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+            }
+
             Spacer()
 
-            // Copyright
             Text("© 2025 Quick Panel")
                 .font(.system(size: 11))
                 .foregroundColor(.secondary)
         }
         .padding()
-        .frame(width: 400, height: 420)
+        .frame(width: 400, height: 460)
     }
 }

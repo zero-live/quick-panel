@@ -497,6 +497,7 @@ struct ItemManagementTab: View {
 struct AdvancedTab: View {
     @ObservedObject var settingsManager = SettingsManager.shared
     @ObservedObject var hotkeyManager = HotkeyManager.shared
+    @ObservedObject var updateManager = UpdateManager.shared
     @State private var showingResetAlert = false
     @State private var isRecordingHotkey = false
 
@@ -617,6 +618,24 @@ struct AdvancedTab: View {
                         InfoRow(label: "版本", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")
                         InfoRow(label: "构建号", value: Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1")
                     }
+                    .padding(.leading, 32)
+
+                    Button(action: {
+                        updateManager.checkForUpdates(silent: false)
+                    }) {
+                        HStack(spacing: 6) {
+                            if updateManager.isChecking {
+                                ProgressView().scaleEffect(0.7)
+                            } else {
+                                Image(systemName: updateManager.hasUpdate ? "arrow.down.circle.fill" : "arrow.triangle.2.circlepath")
+                            }
+                            Text(updateManager.isChecking ? "检查中..." : (updateManager.hasUpdate ? "发现新版本，点击更新" : "检查更新"))
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(updateManager.hasUpdate ? .green : .blue)
+                    .disabled(updateManager.isChecking)
                     .padding(.leading, 32)
                 }
             }
