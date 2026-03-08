@@ -52,7 +52,7 @@ class PanelWindowManager {
         // Get dynamic window size from settings
         let settings = SettingsManager.shared.settings
         let width = settings.panelWidth
-        let height = settings.layerHeight(for: "upper") + settings.layerHeight(for: "lower") + 44  // Two layers + drag handle(24) + divider(20)
+        let height = settings.layerHeight(for: .upper) + settings.layerHeight(for: .lower) + 44  // Two layers + drag handle(24) + divider(20)
 
         let window = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: width, height: height),
@@ -67,13 +67,11 @@ class PanelWindowManager {
         window.level = .floating
         window.collectionBehavior = [.canJoinAllSpaces, .stationary]
         window.isMovableByWindowBackground = false  // Disable automatic dragging
-        window.hasShadow = true
+        window.hasShadow = false  // Glass effect provides its own shadow
 
-        // Enable rounded corners
+        // No manual corner rounding needed — glassEffect handles the shape
         if let contentView = window.contentView {
             contentView.wantsLayer = true
-            contentView.layer?.cornerRadius = 12
-            contentView.layer?.masksToBounds = true
         }
 
         // Enable dragging only from specific view (drag handle)
@@ -130,7 +128,7 @@ class PanelWindowManager {
             
             // Get actual layer heights from SettingsManager
             let settings = SettingsManager.shared.settings
-            let lowerLayerHeight = settings.layerHeight(for: "lower")
+            let lowerLayerHeight = settings.layerHeight(for: .lower)
             
             // In macOS coordinates (bottom-left origin):
             // - Lower layer occupies the bottom portion (y: 0 to lowerLayerHeight)
@@ -246,7 +244,7 @@ class PanelWindowManager {
 
         // Recalculate window size
         let width = settings.panelWidth
-        let height = settings.layerHeight(for: "upper") + settings.layerHeight(for: "lower") + 44
+        let height = settings.layerHeight(for: .upper) + settings.layerHeight(for: .lower) + 44
 
         // Hide panel before resizing if it's visible
         let wasVisible = isVisible

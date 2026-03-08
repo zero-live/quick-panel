@@ -8,11 +8,6 @@
 import Foundation
 import Combine
 
-enum PanelLayer: String, Codable {
-    case upper = "upper"
-    case lower = "lower"
-}
-
 // MARK: - AppSettings Model
 
 struct AppSettings: Codable, Equatable {
