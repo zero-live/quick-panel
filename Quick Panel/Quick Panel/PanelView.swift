@@ -156,7 +156,14 @@ struct LayerGridView: View {
     @State private var editingGroupName = ""
 
     var pageCount: Int {
-        let dataPages = max(1, Int(ceil(Double(max(items.count, 1)) / Double(itemsPerPage))))
+        let maxOrder = items.map(\.order).max() ?? 0
+        let pagesFromOrder = Int(ceil(Double(maxOrder + 1) / Double(itemsPerPage)))
+        let pagesFromCount = Int(ceil(Double(max(items.count, 1)) / Double(itemsPerPage)))
+        
+        let maxGroupPage = dataManager.pageGroups.maxPage(for: layer)
+        let pagesFromGroups = maxGroupPage + 1
+        
+        let dataPages = max(1, max(pagesFromOrder, max(pagesFromCount, pagesFromGroups)))
         if page >= dataPages {
             return page + 1
         }
@@ -210,10 +217,10 @@ struct LayerGridView: View {
     }
 
     var currentPageItems: [PanelItem] {
-        let start = page * itemsPerPage
-        let end = min(start + itemsPerPage, items.count)
-        guard start < items.count else { return [] }
-        return Array(items[start..<end])
+        let startOrder = page * itemsPerPage
+        let endOrder = startOrder + itemsPerPage
+        return items.filter { $0.order >= startOrder && $0.order < endOrder }
+            .sorted { $0.order < $1.order }
     }
 
     // Always show 12 slots
@@ -255,8 +262,14 @@ struct LayerGridView: View {
                     }
 
                     Button(action: {
+                        let newPage = pageCount
+                        dataManager.setPageGroup(
+                            layer: layer,
+                            page: newPage,
+                            name: "面板#\(newPage + 1)"
+                        )
                         withAnimation {
-                            page = pageCount
+                            page = newPage
                         }
                     }) {
                         Image(systemName: "plus")

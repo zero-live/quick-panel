@@ -198,7 +198,25 @@ struct AddItemView: View {
         let layerItems = DataManager.shared.getItems(for: layer)
         let settings = SettingsManager.shared.settings
         let itemsPerPage = layer == .upper ? settings.upperItemsPerPage : settings.lowerItemsPerPage
-        let targetOrder = max(layerItems.count, targetPage * itemsPerPage)
+        
+        let pageStartOrder = targetPage * itemsPerPage
+        let pageEndOrder = pageStartOrder + itemsPerPage
+        
+        let usedOrders = Set(layerItems.filter { $0.order >= pageStartOrder && $0.order < pageEndOrder }.map(\.order))
+        
+        var targetOrder = pageStartOrder
+        for order in pageStartOrder..<pageEndOrder {
+            if !usedOrders.contains(order) {
+                targetOrder = order
+                break
+            }
+        }
+        
+        if usedOrders.count >= itemsPerPage {
+            targetOrder = pageEndOrder
+        }
+        
+        print("📋 Adding item to page \(targetPage), order: \(targetOrder) (page range: \(pageStartOrder)..<\(pageEndOrder), used: \(usedOrders.count))")
 
         let newItem = PanelItem(
             name: name,

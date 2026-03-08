@@ -14,6 +14,13 @@ struct PageGroup: Codable {
         return groups[layer.rawValue]?[page]
     }
     
+    func maxPage(for layer: PanelLayer) -> Int {
+        guard let layerGroups = groups[layer.rawValue], !layerGroups.isEmpty else {
+            return 0
+        }
+        return layerGroups.keys.max() ?? 0
+    }
+    
     mutating func setGroupName(layer: PanelLayer, page: Int, name: String?) {
         if groups[layer.rawValue] == nil {
             groups[layer.rawValue] = [:]

@@ -93,16 +93,10 @@ class DataManager: ObservableObject {
 
         let item = items.remove(at: sourceIndex)
         items.insert(item, at: destinationIndex)
-
-        // Update order indices
-        for (index, _) in items.enumerated() {
-            items[index].order = index
-        }
         saveItems()
     }
 
     func swapItems(layer: PanelLayer, fromIndex: Int, toIndex: Int) {
-        // Get items for this layer
         var layerItems = getItems(for: layer)
 
         guard fromIndex >= 0, fromIndex < layerItems.count,
@@ -111,16 +105,11 @@ class DataManager: ObservableObject {
             return
         }
 
-        // Swap the two items
-        layerItems.swapAt(fromIndex, toIndex)
+        let fromOrder = layerItems[fromIndex].order
+        let toOrder = layerItems[toIndex].order
+        layerItems[fromIndex].order = toOrder
+        layerItems[toIndex].order = fromOrder
 
-        // Update order values
-        for (index, var item) in layerItems.enumerated() {
-            item.order = index
-            layerItems[index] = item
-        }
-
-        // Replace items in main array
         for layerItem in layerItems {
             if let mainIndex = items.firstIndex(where: { $0.id == layerItem.id }) {
                 items[mainIndex] = layerItem
