@@ -386,15 +386,28 @@ struct AppearanceTab: View {
 
 struct ItemManagementTab: View {
     @ObservedObject var dataManager = DataManager.shared
+    @State private var pendingDeleteItem: PanelItem?
 
     var upperItems: [PanelItem] {
         dataManager.getItems(for: .upper)
     }
 
-    var lowerItemsGrouped: [String: [PanelItem]] {
-        let items = dataManager.items.filter { $0.layer == .lower }
-        return Dictionary(grouping: items) { item in
-            item.appBundleIdentifier ?? "未分组"
+    var lowerItemGroups: [LowerItemGroup] {
+        let groupedItems = Dictionary(grouping: dataManager.items.filter { $0.layer == .lower }) { item in
+            item.appBundleIdentifier ?? LowerItemGroup.unboundIdentifier
+        }
+
+        return groupedItems.map { bundleIdentifier, items in
+            LowerItemGroup(
+                bundleIdentifier: bundleIdentifier == LowerItemGroup.unboundIdentifier ? nil : bundleIdentifier,
+                items: items.sorted { $0.order < $1.order }
+            )
+        }
+        .sorted { lhs, rhs in
+            if lhs.isUnbound != rhs.isUnbound {
+                return !lhs.isUnbound
+            }
+            return lhs.displayName.localizedStandardCompare(rhs.displayName) == .orderedAscending
         }
     }
 
@@ -449,11 +462,13 @@ struct ItemManagementTab: View {
                         EmptyStateView(icon: "star", message: "暂无常用功能")
                     } else {
                         ForEach(upperItems) { item in
-                            CompactItemRow(item: item)
+                            CompactItemRow(item: item) {
+                                pendingDeleteItem = item
+                            }
                         }
                         .onDelete { indexSet in
-                            for index in indexSet {
-                                dataManager.deleteItem(upperItems[index])
+                            if let firstIndex = indexSet.first {
+                                pendingDeleteItem = upperItems[firstIndex]
                             }
                         }
                     }
@@ -465,31 +480,19 @@ struct ItemManagementTab: View {
                 }
 
                 Section {
-                    if lowerItemsGrouped.isEmpty {
+                    if lowerItemGroups.isEmpty {
                         EmptyStateView(icon: "apps.iphone", message: "暂无应用项目")
                     } else {
-                        ForEach(lowerItemsGrouped.keys.sorted(), id: \.self) { appId in
+                        ForEach(lowerItemGroups) { group in
                             DisclosureGroup {
-                                ForEach(lowerItemsGrouped[appId] ?? []) { item in
-                                    CompactItemRow(item: item)
+                                ForEach(group.items) { item in
+                                    CompactItemRow(item: item) {
+                                        pendingDeleteItem = item
+                                    }
                                         .padding(.leading, 8)
                                 }
                             } label: {
-                                HStack(spacing: 8) {
-                                    Image(systemName: "app")
-                                        .foregroundColor(.blue)
-                                        .font(.system(size: 12))
-                                    Text(appId)
-                                        .font(.system(size: 12))
-                                    Spacer()
-                                    Text("\(lowerItemsGrouped[appId]?.count ?? 0)")
-                                        .font(.system(size: 11))
-                                        .foregroundColor(.secondary)
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 2)
-                                        .background(Color.secondary.opacity(0.15))
-                                        .cornerRadius(6)
-                                }
+                                LowerItemGroupHeader(group: group)
                             }
                         }
                     }
@@ -502,6 +505,128 @@ struct ItemManagementTab: View {
             }
             .listStyle(.sidebar)
         }
+        .alert("确认删除", isPresented: Binding(
+            get: { pendingDeleteItem != nil },
+            set: { newValue in
+                if !newValue {
+                    pendingDeleteItem = nil
+                }
+            }
+        )) {
+            Button("取消", role: .cancel) {
+                pendingDeleteItem = nil
+            }
+            Button("删除", role: .destructive) {
+                if let item = pendingDeleteItem {
+                    dataManager.deleteItem(item)
+                }
+                pendingDeleteItem = nil
+            }
+        } message: {
+            if let item = pendingDeleteItem {
+                Text("将删除“\(item.name)”。此操作不可撤销。")
+            } else {
+                Text("此操作不可撤销。")
+            }
+        }
+    }
+}
+
+// MARK: - Lower Item Group
+
+struct LowerItemGroup: Identifiable {
+    static let unboundIdentifier = "__unbound__"
+
+    let bundleIdentifier: String?
+    let items: [PanelItem]
+
+    var id: String {
+        bundleIdentifier ?? Self.unboundIdentifier
+    }
+
+    var isUnbound: Bool {
+        bundleIdentifier == nil
+    }
+
+    var displayName: String {
+        if let applicationName {
+            return applicationName
+        }
+
+        return isUnbound ? "未绑定应用" : (bundleIdentifier ?? "未知应用")
+    }
+
+    var subtitle: String {
+        if let bundleIdentifier {
+            return bundleIdentifier
+        }
+        return "这些项目未绑定到具体应用"
+    }
+
+    var itemCountText: String {
+        "\(items.count)"
+    }
+
+    var icon: NSImage? {
+        guard let applicationURL else { return nil }
+        return NSWorkspace.shared.icon(forFile: applicationURL.path)
+    }
+
+    private var applicationURL: URL? {
+        guard let bundleIdentifier else { return nil }
+        return NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier)
+    }
+
+    private var applicationName: String? {
+        if let applicationURL {
+            return FileManager.default.displayName(atPath: applicationURL.path)
+                .replacingOccurrences(of: ".app", with: "")
+        }
+
+        return nil
+    }
+}
+
+struct LowerItemGroupHeader: View {
+    let group: LowerItemGroup
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Group {
+                if let icon = group.icon {
+                    Image(nsImage: icon)
+                        .resizable()
+                        .interpolation(.high)
+                } else {
+                    Image(systemName: group.isUnbound ? "questionmark.app" : "app")
+                        .resizable()
+                        .scaledToFit()
+                        .foregroundColor(group.isUnbound ? .orange : .blue)
+                        .padding(4)
+                }
+            }
+            .frame(width: 18, height: 18)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(group.displayName)
+                    .font(.system(size: 12, weight: .medium))
+                Text(group.subtitle)
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            Text(group.itemCountText)
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Color.secondary.opacity(0.15))
+                .cornerRadius(6)
+        }
+        .padding(.vertical, 2)
     }
 }
 
@@ -924,6 +1049,7 @@ struct EmptyStateView: View {
 
 struct CompactItemRow: View {
     let item: PanelItem
+    let onDelete: () -> Void
 
     var body: some View {
         HStack(spacing: 8) {
@@ -953,7 +1079,7 @@ struct CompactItemRow: View {
             .foregroundColor(.blue)
 
             Button(action: {
-                DataManager.shared.deleteItem(item)
+                onDelete()
             }) {
                 Image(systemName: "trash")
                     .font(.system(size: 11))
