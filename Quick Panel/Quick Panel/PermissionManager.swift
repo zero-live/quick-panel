@@ -13,6 +13,8 @@ class PermissionManager {
 
     private init() {}
 
+    // MARK: - Accessibility
+
     func checkAccessibilityPermission() -> Bool {
         return AXIsProcessTrusted()
     }
@@ -64,7 +66,7 @@ class PermissionManager {
         }
     }
 
-    private func openAccessibilitySettings() {
+    func openAccessibilitySettings() {
         // Try multiple methods to open accessibility settings
 
         // Method 1: Direct URL scheme (works on macOS 13+)

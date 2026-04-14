@@ -13,6 +13,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var hotkeyManager: HotkeyManager?
 
     private var hasLaunched = false
+    private var hasPromptedForAccessibility = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Prevent multiple launches
@@ -50,8 +51,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             } else if self.mouseEventMonitor?.isUsingBackupMethod() == true {
                 print("⚠️ Using backup method (NSEvent)")
                 print("💡 App is working. If you want better reliability, grant accessibility permission.")
-                // Don't show blocking dialog - just log it
-                // User can grant permission later if needed
+                self.promptForAccessibilityIfNeeded()
             }
         }
     }
@@ -89,6 +89,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func handleMiddleClick(at location: CGPoint) {
         PanelWindowManager.shared.togglePanel(at: location)
+    }
+
+    private func promptForAccessibilityIfNeeded() {
+        guard !hasPromptedForAccessibility else { return }
+        hasPromptedForAccessibility = true
+        PermissionManager.shared.requestAccessibilityPermission()
     }
 
     func applicationWillTerminate(_ notification: Notification) {

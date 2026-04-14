@@ -72,6 +72,7 @@ class PanelWindowManager {
         window.collectionBehavior = [.canJoinAllSpaces, .stationary]
         window.isMovableByWindowBackground = false  // Disable automatic dragging
         window.hasShadow = false
+        window.alphaValue = settings.panelOpacity
 
         if let contentView = window.contentView {
             contentView.wantsLayer = true
@@ -192,15 +193,14 @@ class PanelWindowManager {
 
         // Calculate window position
         let windowSize = window.frame.size
-        var origin = location
+        var origin = CGPoint(
+            x: location.x - windowSize.width / 2,
+            y: location.y - windowSize.height / 2
+        )
 
         // Adjust position to avoid screen edges
-        if let screen = NSScreen.main {
+        if let screen = screenContaining(point: location) {
             let screenFrame = screen.visibleFrame
-
-            // Center panel on mouse cursor
-            origin.x = location.x - windowSize.width / 2
-            origin.y = location.y - windowSize.height / 2
 
             // Keep within screen bounds
             if origin.x + windowSize.width > screenFrame.maxX {
@@ -262,6 +262,12 @@ class PanelWindowManager {
         window.alphaValue = settings.panelOpacity
 
         print("⚙️ Settings applied: \(Int(width))×\(Int(height))pt, opacity: \(Int(settings.panelOpacity * 100))%")
+    }
+
+    private func screenContaining(point: CGPoint) -> NSScreen? {
+        return NSScreen.screens.first { screen in
+            screen.frame.contains(point)
+        } ?? NSScreen.main
     }
 }
 

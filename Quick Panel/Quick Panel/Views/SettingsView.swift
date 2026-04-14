@@ -412,16 +412,29 @@ struct ItemManagementTab: View {
 
                 Spacer()
 
-                Button(action: {
-                    AddItemWindowManager.shared.showAddItemWindow(layer: .upper, appBundleId: nil, appName: nil)
-                }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "plus")
-                        Text("添加")
+                HStack(spacing: 8) {
+                    Button(action: {
+                        AddItemWindowManager.shared.showAddItemWindow(layer: .upper, appBundleId: nil, appName: nil)
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "star")
+                            Text("添加常用")
+                        }
                     }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+
+                    Button(action: {
+                        AddItemWindowManager.shared.showAddItemWindow(layer: .lower, appBundleId: nil, appName: nil)
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "app")
+                            Text("添加下层")
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
@@ -500,6 +513,15 @@ struct AdvancedTab: View {
     @ObservedObject var updateManager = UpdateManager.shared
     @State private var showingResetAlert = false
     @State private var isRecordingHotkey = false
+    @State private var accessibilityGranted = PermissionManager.shared.checkAccessibilityPermission()
+
+    private var accessibilityStatusText: String {
+        accessibilityGranted ? "已授权" : "未授权"
+    }
+
+    private var accessibilityStatusColor: Color {
+        accessibilityGranted ? .green : .orange
+    }
 
     var body: some View {
         ScrollView {
@@ -566,6 +588,44 @@ struct AdvancedTab: View {
                         }
                     ))
                     .labelsHidden()
+                }
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Image(systemName: "accessibility")
+                            .foregroundColor(accessibilityStatusColor)
+                            .frame(width: 24)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("辅助功能权限")
+                                .font(.system(size: 13, weight: .medium))
+                            Text(accessibilityGranted ? "当前已授权，可稳定监听鼠标中键" : "建议授权，以获得更稳定的全局鼠标监听能力")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        Text(accessibilityStatusText)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(accessibilityStatusColor)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(accessibilityStatusColor.opacity(0.12))
+                            .cornerRadius(8)
+                    }
+
+                    HStack(spacing: 8) {
+                        Button("打开系统设置") {
+                            PermissionManager.shared.openAccessibilitySettings()
+                        }
+                        .buttonStyle(.bordered)
+
+                        Button("刷新状态") {
+                            refreshAccessibilityStatus()
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+                    .padding(.leading, 32)
                 }
 
                 Divider()
@@ -642,6 +702,13 @@ struct AdvancedTab: View {
             .padding(24)
             .animation(.easeInOut(duration: 0.2), value: hotkeyManager.isEnabled)
         }
+        .onAppear {
+            refreshAccessibilityStatus()
+        }
+    }
+
+    private func refreshAccessibilityStatus() {
+        accessibilityGranted = PermissionManager.shared.checkAccessibilityPermission()
     }
 }
 

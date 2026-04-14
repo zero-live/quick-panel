@@ -19,6 +19,7 @@ class DataManager: ObservableObject {
     private let configFile: URL
     private let groupsFile: URL
     private let pageCountsFile: URL
+    private let unboundLowerScope = "__unbound__"
 
     private init() {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
@@ -47,6 +48,7 @@ class DataManager: ObservableObject {
         do {
             let data = try Data(contentsOf: configFile)
             items = try JSONDecoder().decode([PanelItem].self, from: data)
+            normalizeOrders(save: false)
             print("✅ Loaded \(items.count) items from config")
         } catch {
             print("❌ Failed to load config: \(error.localizedDescription)")
@@ -69,18 +71,21 @@ class DataManager: ObservableObject {
 
     func addItem(_ item: PanelItem) {
         items.append(item)
+        normalizeOrders(save: false)
         saveItems()
     }
 
     func updateItem(_ item: PanelItem) {
         if let index = items.firstIndex(where: { $0.id == item.id }) {
             items[index] = item
+            normalizeOrders(save: false)
             saveItems()
         }
     }
 
     func deleteItem(_ item: PanelItem) {
         items.removeAll { $0.id == item.id }
+        normalizeOrders(save: false)
         saveItems()
     }
 
@@ -96,8 +101,8 @@ class DataManager: ObservableObject {
         saveItems()
     }
 
-    func swapItems(layer: PanelLayer, fromIndex: Int, toIndex: Int) {
-        var layerItems = getItems(for: layer)
+    func swapItems(layer: PanelLayer, appBundleIdentifier: String? = nil, fromIndex: Int, toIndex: Int) {
+        var layerItems = getItems(for: layer, appBundleIdentifier: appBundleIdentifier)
 
         guard fromIndex >= 0, fromIndex < layerItems.count,
               toIndex >= 0, toIndex < layerItems.count,
@@ -116,23 +121,32 @@ class DataManager: ObservableObject {
             }
         }
 
+        normalizeOrders(save: false)
         saveItems()
-        print("✅ Swapped items at \(fromIndex) and \(toIndex) in \(layer) layer")
+        print("✅ Swapped items at \(fromIndex) and \(toIndex) in \(layer) layer (\(appBundleIdentifier ?? "global"))")
     }
 
     // MARK: - Utility
 
-    func getItems(for layer: PanelLayer) -> [PanelItem] {
-        return items.filter { $0.layer == layer }.sorted { $0.order < $1.order }
+    func getItems(for layer: PanelLayer, appBundleIdentifier: String? = nil) -> [PanelItem] {
+        let filteredItems = items.filter { item in
+            guard item.layer == layer else { return false }
+
+            if layer == .lower, let appBundleIdentifier {
+                return item.appBundleIdentifier == appBundleIdentifier
+            }
+
+            return true
+        }
+
+        return filteredItems.sorted { $0.order < $1.order }
     }
 
     func getItemsForCurrentApp(bundleIdentifier: String?) -> [PanelItem] {
         guard let bundleId = bundleIdentifier else {
             return []
         }
-        return items.filter {
-            $0.layer == .lower && $0.appBundleIdentifier == bundleId
-        }.sorted { $0.order < $1.order }
+        return getItems(for: .lower, appBundleIdentifier: bundleId)
     }
 
     func clearAllItems() {
@@ -170,8 +184,16 @@ class DataManager: ObservableObject {
         }
     }
 
-    func setPageGroup(layer: PanelLayer, page: Int, name: String?) {
-        pageGroups.setGroupName(layer: layer, page: page, name: name)
+    func getPageGroupName(layer: PanelLayer, page: Int, appBundleIdentifier: String? = nil) -> String? {
+        return pageGroups.getGroupName(scopeKey: pageScopeKey(layer: layer, appBundleIdentifier: appBundleIdentifier), page: page)
+    }
+
+    func setPageGroup(layer: PanelLayer, page: Int, name: String?, appBundleIdentifier: String? = nil) {
+        pageGroups.setGroupName(
+            scopeKey: pageScopeKey(layer: layer, appBundleIdentifier: appBundleIdentifier),
+            page: page,
+            name: name
+        )
         savePageGroups()
     }
 
@@ -201,39 +223,110 @@ class DataManager: ObservableObject {
         }
     }
 
-    func getPageCount(for layer: PanelLayer) -> Int {
-        return pageCounts[layer.rawValue] ?? 1
+    func getPageCount(for layer: PanelLayer, appBundleIdentifier: String? = nil) -> Int {
+        let scopeKey = pageScopeKey(layer: layer, appBundleIdentifier: appBundleIdentifier)
+        if let count = pageCounts[scopeKey] {
+            return count
+        }
+
+        if layer == .lower, let legacyCount = pageCounts[layer.rawValue] {
+            return legacyCount
+        }
+
+        return 1
     }
 
-    func addPage(layer: PanelLayer) -> Int {
-        let current = getPageCount(for: layer)
-        pageCounts[layer.rawValue] = current + 1
+    func addPage(layer: PanelLayer, appBundleIdentifier: String? = nil) -> Int {
+        let scopeKey = pageScopeKey(layer: layer, appBundleIdentifier: appBundleIdentifier)
+        let current = getPageCount(for: layer, appBundleIdentifier: appBundleIdentifier)
+        pageCounts[scopeKey] = current + 1
         savePageCounts()
         return current
     }
 
-    func deletePage(layer: PanelLayer, page: Int, itemsPerPage: Int) {
+    func deletePage(layer: PanelLayer, page: Int, itemsPerPage: Int, appBundleIdentifier: String? = nil) {
         let pageStartOrder = page * itemsPerPage
         let pageEndOrder = pageStartOrder + itemsPerPage
+        let scopeKey = pageScopeKey(layer: layer, appBundleIdentifier: appBundleIdentifier)
 
         items.removeAll { item in
-            item.layer == layer && item.order >= pageStartOrder && item.order < pageEndOrder
+            item.layer == layer &&
+            matchesOrderScope(item: item, layer: layer, appBundleIdentifier: appBundleIdentifier) &&
+            item.order >= pageStartOrder &&
+            item.order < pageEndOrder
         }
 
         for index in items.indices {
-            if items[index].layer == layer && items[index].order >= pageEndOrder {
+            if items[index].layer == layer &&
+                matchesOrderScope(item: items[index], layer: layer, appBundleIdentifier: appBundleIdentifier) &&
+                items[index].order >= pageEndOrder {
                 items[index].order -= itemsPerPage
             }
         }
 
-        pageGroups.removePage(layer: layer, page: page)
+        pageGroups.removePage(scopeKey: scopeKey, page: page)
 
-        let current = getPageCount(for: layer)
-        pageCounts[layer.rawValue] = max(1, current - 1)
+        let current = getPageCount(for: layer, appBundleIdentifier: appBundleIdentifier)
+        pageCounts[scopeKey] = max(1, current - 1)
 
+        normalizeOrders(save: false)
         saveItems()
         savePageGroups()
         savePageCounts()
-        print("🗑️ Deleted page \(page) from \(layer) layer, new count: \(pageCounts[layer.rawValue] ?? 1)")
+        print("🗑️ Deleted page \(page) from \(layer) layer (\(appBundleIdentifier ?? "global")), new count: \(pageCounts[scopeKey] ?? 1)")
+    }
+
+    // MARK: - Helpers
+
+    private func pageScopeKey(layer: PanelLayer, appBundleIdentifier: String?) -> String {
+        switch layer {
+        case .upper:
+            return layer.rawValue
+        case .lower:
+            let scopeIdentifier = appBundleIdentifier ?? unboundLowerScope
+            return "\(layer.rawValue)::\(scopeIdentifier)"
+        }
+    }
+
+    private func orderScopeKey(for item: PanelItem) -> String {
+        return pageScopeKey(layer: item.layer, appBundleIdentifier: item.appBundleIdentifier)
+    }
+
+    private func matchesOrderScope(item: PanelItem, layer: PanelLayer, appBundleIdentifier: String?) -> Bool {
+        return orderScopeKey(for: item) == pageScopeKey(layer: layer, appBundleIdentifier: appBundleIdentifier)
+    }
+
+    private func normalizeOrders(save: Bool) {
+        var normalizedItems = items
+        var didChange = false
+
+        let groupedIndices = Dictionary(grouping: normalizedItems.indices, by: { orderScopeKey(for: normalizedItems[$0]) })
+
+        for indices in groupedIndices.values {
+            let sortedIndices = indices.sorted { lhs, rhs in
+                let lhsItem = normalizedItems[lhs]
+                let rhsItem = normalizedItems[rhs]
+
+                if lhsItem.order == rhsItem.order {
+                    return lhsItem.id.uuidString < rhsItem.id.uuidString
+                }
+
+                return lhsItem.order < rhsItem.order
+            }
+
+            for (normalizedOrder, index) in sortedIndices.enumerated() {
+                if normalizedItems[index].order != normalizedOrder {
+                    normalizedItems[index].order = normalizedOrder
+                    didChange = true
+                }
+            }
+        }
+
+        if didChange {
+            items = normalizedItems
+            if save {
+                saveItems()
+            }
+        }
     }
 }

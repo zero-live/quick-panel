@@ -365,8 +365,3 @@ struct DropDelegate: SwiftUI.DropDelegate {
         isDragging = false
     }
 }
-
-#Preview {
-    NewPanelView()
-        .frame(width: 400, height: 800)
-}

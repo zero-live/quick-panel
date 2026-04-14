@@ -27,6 +27,7 @@ struct AddItemView: View {
     @State private var isFetchingIcon = false
     @State private var bindToCurrentApp = false
     @State private var selectedAppBundleId: String?
+    @State private var selectedAppName: String?
 
     init(presetLayer: PanelLayer = .upper, presetAppBundleId: String? = nil, presetAppName: String? = nil, targetPage: Int = 0) {
         self.presetLayer = presetLayer
@@ -47,14 +48,9 @@ struct AddItemView: View {
                     Text("下层").tag(PanelLayer.lower)
                 }
                 .pickerStyle(.segmented)
-                .disabled(presetLayer == .lower && presetAppBundleId != nil)
 
-                // Show app binding option for lower layer
-                if layer == .lower, let appName = presetAppName, let appBundleId = presetAppBundleId {
-                    Toggle("绑定到当前应用 (\(appName))", isOn: $bindToCurrentApp)
-                        .onChange(of: bindToCurrentApp) { _, newValue in
-                            selectedAppBundleId = newValue ? appBundleId : nil
-                        }
+                if layer == .lower {
+                    lowerLayerBindingSection
                 }
 
                 Picker("类型", selection: $itemType) {
@@ -69,7 +65,7 @@ struct AddItemView: View {
                     HStack {
                         TextField("应用路径", text: $path)
                         Button("选择...") {
-                            selectApplication()
+                            selectItemApplication()
                         }
                     }
                 } else {
@@ -127,22 +123,110 @@ struct AddItemView: View {
                     addItem()
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(name.isEmpty || path.isEmpty)
+                .disabled(!canSave)
             }
             .padding()
         }
-        .frame(width: 500, height: itemType == .website ? 350 : 300)
+        .frame(width: 520, height: formHeight)
         .onAppear {
-            // Initialize with preset values
-            layer = presetLayer
-            if presetLayer == .lower, let bundleId = presetAppBundleId {
-                bindToCurrentApp = true
-                selectedAppBundleId = bundleId
+            initializeForm()
+        }
+        .onChange(of: layer) { _, newLayer in
+            handleLayerChange(newLayer)
+        }
+    }
+
+    private var canSave: Bool {
+        let hasBaseFields = !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+            !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+
+        guard hasBaseFields else { return false }
+
+        if layer == .lower {
+            return selectedAppBundleId != nil
+        }
+
+        return true
+    }
+
+    private var formHeight: CGFloat {
+        let baseHeight: CGFloat = itemType == .website ? 380 : 330
+        return layer == .lower ? baseHeight + 90 : baseHeight
+    }
+
+    @ViewBuilder
+    private var lowerLayerBindingSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let appName = presetAppName, let appBundleId = presetAppBundleId {
+                Toggle("绑定到当前应用 (\(appName))", isOn: $bindToCurrentApp)
+                    .onChange(of: bindToCurrentApp) { _, newValue in
+                        if newValue {
+                            selectedAppBundleId = appBundleId
+                            selectedAppName = appName
+                        } else if selectedAppBundleId == appBundleId {
+                            selectedAppBundleId = nil
+                            selectedAppName = nil
+                        }
+                    }
+            }
+
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("绑定应用")
+                        .font(.system(size: 12, weight: .medium))
+
+                    Text(selectedAppName ?? "未选择")
+                        .font(.system(size: 11))
+                        .foregroundColor(selectedAppBundleId == nil ? .secondary : .primary)
+                }
+
+                Spacer()
+
+                Button("选择应用...") {
+                    selectBindingApplication()
+                }
+
+                if selectedAppBundleId != nil {
+                    Button("清除") {
+                        clearSelectedBinding()
+                    }
+                    .foregroundColor(.red)
+                }
+            }
+
+            if selectedAppBundleId == nil {
+                Text("下层项目必须绑定一个目标应用，否则主面板不会显示。")
+                    .font(.system(size: 11))
+                    .foregroundColor(.orange)
             }
         }
     }
 
-    private func selectApplication() {
+    private func initializeForm() {
+        layer = presetLayer
+
+        if presetLayer == .lower, let bundleId = presetAppBundleId {
+            bindToCurrentApp = true
+            selectedAppBundleId = bundleId
+            selectedAppName = presetAppName
+        }
+    }
+
+    private func handleLayerChange(_ newLayer: PanelLayer) {
+        guard newLayer == .lower else {
+            clearSelectedBinding()
+            bindToCurrentApp = false
+            return
+        }
+
+        if let presetAppBundleId, let presetAppName {
+            bindToCurrentApp = true
+            selectedAppBundleId = presetAppBundleId
+            selectedAppName = presetAppName
+        }
+    }
+
+    private func selectItemApplication() {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
@@ -156,6 +240,30 @@ struct AddItemView: View {
                 name = url.deletingPathExtension().lastPathComponent
             }
         }
+    }
+
+    private func selectBindingApplication() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.allowedContentTypes = [.application]
+        panel.directoryURL = URL(fileURLWithPath: "/Applications")
+
+        if panel.runModal() == .OK, let url = panel.url {
+            let bundle = Bundle(url: url)
+            selectedAppBundleId = bundle?.bundleIdentifier
+            selectedAppName = url.deletingPathExtension().lastPathComponent
+
+            if let presetAppBundleId {
+                bindToCurrentApp = selectedAppBundleId == presetAppBundleId
+            }
+        }
+    }
+
+    private func clearSelectedBinding() {
+        selectedAppBundleId = nil
+        selectedAppName = nil
     }
 
     private func selectImageFile() {
@@ -195,15 +303,16 @@ struct AddItemView: View {
             iconData = tiffData
         }
 
-        let layerItems = DataManager.shared.getItems(for: layer)
+        let bindingBundleId = layer == .lower ? selectedAppBundleId : nil
         let settings = SettingsManager.shared.settings
         let itemsPerPage = layer == .upper ? settings.upperItemsPerPage : settings.lowerItemsPerPage
-        
+        let layerItems = DataManager.shared.getItems(for: layer, appBundleIdentifier: bindingBundleId)
+
         let pageStartOrder = targetPage * itemsPerPage
         let pageEndOrder = pageStartOrder + itemsPerPage
-        
+
         let usedOrders = Set(layerItems.filter { $0.order >= pageStartOrder && $0.order < pageEndOrder }.map(\.order))
-        
+
         var targetOrder = pageStartOrder
         for order in pageStartOrder..<pageEndOrder {
             if !usedOrders.contains(order) {
@@ -211,12 +320,12 @@ struct AddItemView: View {
                 break
             }
         }
-        
+
         if usedOrders.count >= itemsPerPage {
             targetOrder = pageEndOrder
         }
-        
-        print("📋 Adding item to page \(targetPage), order: \(targetOrder) (page range: \(pageStartOrder)..<\(pageEndOrder), used: \(usedOrders.count))")
+
+        print("📋 Adding item to page \(targetPage), order: \(targetOrder) (page range: \(pageStartOrder)..<\(pageEndOrder), used: \(usedOrders.count), scope: \(bindingBundleId ?? "upper"))")
 
         let newItem = PanelItem(
             name: name,
@@ -225,7 +334,7 @@ struct AddItemView: View {
             iconData: iconData,
             browserPath: browserPath,
             layer: layer,
-            appBundleIdentifier: selectedAppBundleId,
+            appBundleIdentifier: bindingBundleId,
             order: targetOrder
         )
 
@@ -248,6 +357,8 @@ struct EditItemView: View {
     @State private var browserPath: String?
     @State private var customIcon: NSImage?
     @State private var isFetchingIcon = false
+    @State private var selectedAppBundleId: String?
+    @State private var selectedAppName: String?
 
     init(item: PanelItem) {
         self.item = item
@@ -256,6 +367,8 @@ struct EditItemView: View {
         _path = State(initialValue: item.path)
         _browserPath = State(initialValue: item.browserPath)
         _customIcon = State(initialValue: item.iconData != nil ? NSImage(data: item.iconData!) : nil)
+        _selectedAppBundleId = State(initialValue: item.appBundleIdentifier)
+        _selectedAppName = State(initialValue: nil)
     }
 
     var body: some View {
@@ -271,13 +384,17 @@ struct EditItemView: View {
                 }
                 .pickerStyle(.segmented)
 
+                if layer == .lower {
+                    lowerLayerBindingSection
+                }
+
                 TextField("名称", text: $name)
 
                 if item.type == .application {
                     HStack {
                         TextField("应用路径", text: $path)
                         Button("选择...") {
-                            selectApplication()
+                            selectItemApplication()
                         }
                     }
                 } else {
@@ -326,14 +443,89 @@ struct EditItemView: View {
                     saveItem()
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(name.isEmpty || path.isEmpty)
+                .disabled(!canSave)
             }
             .padding()
         }
-        .frame(width: 500, height: item.type == .website ? 300 : 250)
+        .frame(width: 520, height: formHeight)
+        .onAppear {
+            initializeForm()
+        }
+        .onChange(of: layer) { _, newLayer in
+            if newLayer == .upper {
+                selectedAppBundleId = nil
+                selectedAppName = nil
+            }
+        }
     }
 
-    private func selectApplication() {
+    private var canSave: Bool {
+        let hasBaseFields = !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+            !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+
+        guard hasBaseFields else { return false }
+
+        if layer == .lower {
+            return selectedAppBundleId != nil
+        }
+
+        return true
+    }
+
+    private var formHeight: CGFloat {
+        let baseHeight: CGFloat = item.type == .website ? 330 : 280
+        return layer == .lower ? baseHeight + 90 : baseHeight
+    }
+
+    @ViewBuilder
+    private var lowerLayerBindingSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("绑定应用")
+                        .font(.system(size: 12, weight: .medium))
+
+                    Text(selectedAppName ?? itemBindingDisplayName)
+                        .font(.system(size: 11))
+                        .foregroundColor(selectedAppBundleId == nil ? .secondary : .primary)
+                }
+
+                Spacer()
+
+                Button("选择应用...") {
+                    selectBindingApplication()
+                }
+
+                if selectedAppBundleId != nil {
+                    Button("清除") {
+                        selectedAppBundleId = nil
+                        selectedAppName = nil
+                    }
+                    .foregroundColor(.red)
+                }
+            }
+
+            if selectedAppBundleId == nil {
+                Text("下层项目必须绑定一个目标应用，否则主面板不会显示。")
+                    .font(.system(size: 11))
+                    .foregroundColor(.orange)
+            }
+        }
+    }
+
+    private var itemBindingDisplayName: String {
+        selectedAppName ?? item.appBundleIdentifier ?? "未选择"
+    }
+
+    private func initializeForm() {
+        guard let bundleId = item.appBundleIdentifier else { return }
+        selectedAppBundleId = bundleId
+        selectedAppName = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId)?
+            .deletingPathExtension()
+            .lastPathComponent
+    }
+
+    private func selectItemApplication() {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
@@ -343,6 +535,21 @@ struct EditItemView: View {
 
         if panel.runModal() == .OK, let url = panel.url {
             path = url.path
+        }
+    }
+
+    private func selectBindingApplication() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.allowedContentTypes = [.application]
+        panel.directoryURL = URL(fileURLWithPath: "/Applications")
+
+        if panel.runModal() == .OK, let url = panel.url {
+            let bundle = Bundle(url: url)
+            selectedAppBundleId = bundle?.bundleIdentifier
+            selectedAppName = url.deletingPathExtension().lastPathComponent
         }
     }
 
@@ -389,6 +596,15 @@ struct EditItemView: View {
         updatedItem.path = path
         updatedItem.browserPath = browserPath
         updatedItem.iconData = iconData
+        updatedItem.appBundleIdentifier = layer == .lower ? selectedAppBundleId : nil
+
+        let targetBundleId = layer == .lower ? selectedAppBundleId : nil
+        let scopeChanged = updatedItem.layer != item.layer || updatedItem.appBundleIdentifier != item.appBundleIdentifier
+
+        if scopeChanged {
+            let layerItems = DataManager.shared.getItems(for: layer, appBundleIdentifier: targetBundleId)
+            updatedItem.order = (layerItems.map(\.order).max() ?? -1) + 1
+        }
 
         DataManager.shared.updateItem(updatedItem)
         dismiss()

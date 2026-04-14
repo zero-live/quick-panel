@@ -11,7 +11,6 @@ import UniformTypeIdentifiers
 struct PanelView: View {
     @ObservedObject var dataManager = DataManager.shared
     @ObservedObject var settingsManager = SettingsManager.shared
-    @ObservedObject var contextDetector = ContextDetector.shared
     @State private var currentAppBundleId: String? = nil
     @State private var currentAppName: String = "当前应用"
     @State private var upperPage = 0
@@ -71,6 +70,7 @@ struct PanelView: View {
                 page: $upperPage,
                 itemsPerPage: upperItemsPerPage,
                 layer: .upper,
+                pageScopeAppBundleId: nil,
                 currentAppBundleId: nil,
                 currentAppName: nil,
                 title: "常用功能",
@@ -87,6 +87,7 @@ struct PanelView: View {
                 page: $lowerPage,
                 itemsPerPage: lowerItemsPerPage,
                 layer: .lower,
+                pageScopeAppBundleId: currentAppBundleId,
                 currentAppBundleId: currentAppBundleId,
                 currentAppName: currentAppName,
                 title: currentAppName,
@@ -96,35 +97,21 @@ struct PanelView: View {
         }
         .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18))
         .onAppear {
-            setupPanelShowObserver()
+            initializeCurrentAppState()
+        }
+        .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didActivateApplicationNotification)) { notification in
+            if let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+               app.bundleIdentifier != Bundle.main.bundleIdentifier {
+                lastActiveApp = (app.bundleIdentifier, app.localizedName ?? "当前应用")
+                print("📱 Tracked active app: \(lastActiveApp.name) (\(lastActiveApp.bundleId ?? "nil"))")
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .panelWillShow)) { _ in
+            updateCurrentApp()
         }
     }
 
-    private func setupPanelShowObserver() {
-        // Listen for active app changes
-        NSWorkspace.shared.notificationCenter.addObserver(
-            forName: NSWorkspace.didActivateApplicationNotification,
-            object: nil,
-            queue: .main
-        ) { notification in
-            if let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication {
-                // Track the last non-QuickPanel app
-                if app.bundleIdentifier != Bundle.main.bundleIdentifier {
-                    lastActiveApp = (app.bundleIdentifier, app.localizedName ?? "当前应用")
-                    print("📱 Tracked active app: \(lastActiveApp.name) (\(lastActiveApp.bundleId ?? "nil"))")
-                }
-            }
-        }
-
-        // Listen for panel will show notification
-        NotificationCenter.default.addObserver(
-            forName: .panelWillShow,
-            object: nil,
-            queue: .main
-        ) { [self] _ in
-            updateCurrentApp()
-        }
-
+    private func initializeCurrentAppState() {
         if let frontApp = NSWorkspace.shared.frontmostApplication,
            frontApp.bundleIdentifier != Bundle.main.bundleIdentifier {
             lastActiveApp = (frontApp.bundleIdentifier, frontApp.localizedName ?? "当前应用")
@@ -146,6 +133,7 @@ struct LayerGridView: View {
     @Binding var page: Int
     let itemsPerPage: Int
     let layer: PanelLayer
+    let pageScopeAppBundleId: String?
     let currentAppBundleId: String?
     let currentAppName: String?
     let title: String
@@ -156,52 +144,13 @@ struct LayerGridView: View {
     @State private var editingGroupName = ""
 
     var pageCount: Int {
-        dataManager.getPageCount(for: layer)
+        dataManager.getPageCount(for: layer, appBundleIdentifier: pageScopeAppBundleId)
     }
 
     private func validatePage() {
         // If current page exceeds page count, go back to last valid page
         if page >= pageCount {
             page = max(0, pageCount - 1)
-        }
-    }
-
-    private func setupScrollObservers() {
-        // Listen for scroll notifications
-        NotificationCenter.default.addObserver(
-            forName: .scrollPreviousPage,
-            object: nil,
-            queue: .main
-        ) { notification in
-            guard let userInfo = notification.userInfo,
-                  let layerString = userInfo["layer"] as? String,
-                  layerString == (layer == .upper ? "upper" : "lower") else {
-                return
-            }
-
-            if page > 0 {
-                withAnimation {
-                    page -= 1
-                }
-            }
-        }
-
-        NotificationCenter.default.addObserver(
-            forName: .scrollNextPage,
-            object: nil,
-            queue: .main
-        ) { notification in
-            guard let userInfo = notification.userInfo,
-                  let layerString = userInfo["layer"] as? String,
-                  layerString == (layer == .upper ? "upper" : "lower") else {
-                return
-            }
-
-            if page < pageCount - 1 {
-                withAnimation {
-                    page += 1
-                }
-            }
         }
     }
 
@@ -216,7 +165,7 @@ struct LayerGridView: View {
     var slotsToShow: Int { itemsPerPage }
 
     var currentGroupName: String? {
-        dataManager.pageGroups.getGroupName(layer: layer, page: page)
+        dataManager.getPageGroupName(layer: layer, page: page, appBundleIdentifier: pageScopeAppBundleId)
     }
 
     var displayTitle: String {
@@ -247,7 +196,12 @@ struct LayerGridView: View {
                     if page > 0 {
                         Button(action: {
                             let deletingPage = page
-                            dataManager.deletePage(layer: layer, page: deletingPage, itemsPerPage: itemsPerPage)
+                            dataManager.deletePage(
+                                layer: layer,
+                                page: deletingPage,
+                                itemsPerPage: itemsPerPage,
+                                appBundleIdentifier: pageScopeAppBundleId
+                            )
                             withAnimation {
                                 page = max(0, deletingPage - 1)
                             }
@@ -269,11 +223,12 @@ struct LayerGridView: View {
                     }
 
                     Button(action: {
-                        let newPage = dataManager.addPage(layer: layer)
+                        let newPage = dataManager.addPage(layer: layer, appBundleIdentifier: pageScopeAppBundleId)
                         dataManager.setPageGroup(
                             layer: layer,
                             page: newPage,
-                            name: "面板#\(newPage + 1)"
+                            name: "面板#\(newPage + 1)",
+                            appBundleIdentifier: pageScopeAppBundleId
                         )
                         withAnimation {
                             page = newPage
@@ -291,6 +246,32 @@ struct LayerGridView: View {
             }
             .padding(.horizontal, 20)
             .padding(.top, 8)
+            .onReceive(NotificationCenter.default.publisher(for: .scrollPreviousPage)) { notification in
+                guard let userInfo = notification.userInfo,
+                      let layerString = userInfo["layer"] as? String,
+                      layerString == layer.rawValue else {
+                    return
+                }
+
+                if page > 0 {
+                    withAnimation {
+                        page -= 1
+                    }
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .scrollNextPage)) { notification in
+                guard let userInfo = notification.userInfo,
+                      let layerString = userInfo["layer"] as? String,
+                      layerString == layer.rawValue else {
+                    return
+                }
+
+                if page < pageCount - 1 {
+                    withAnimation {
+                        page += 1
+                    }
+                }
+            }
             .overlay(alignment: .center) {
                 // Center: Group name (double-click to edit) - absolutely centered
                 if let groupName = currentGroupName, !groupName.isEmpty {
@@ -311,7 +292,8 @@ struct LayerGridView: View {
                                     dataManager.setPageGroup(
                                         layer: layer,
                                         page: page,
-                                        name: trimmedName.isEmpty ? nil : trimmedName
+                                        name: trimmedName.isEmpty ? nil : trimmedName,
+                                        appBundleIdentifier: pageScopeAppBundleId
                                     )
                                     showingGroupNameEditor = false
                                 },
@@ -338,7 +320,8 @@ struct LayerGridView: View {
                                     dataManager.setPageGroup(
                                         layer: layer,
                                         page: page,
-                                        name: trimmedName.isEmpty ? nil : trimmedName
+                                        name: trimmedName.isEmpty ? nil : trimmedName,
+                                        appBundleIdentifier: pageScopeAppBundleId
                                     )
                                     showingGroupNameEditor = false
                                 },
@@ -349,9 +332,6 @@ struct LayerGridView: View {
                             .frame(width: 250, height: 100)
                         }
                 }
-            }
-            .onAppear {
-                setupScrollObservers()
             }
             .onChange(of: items.count) { _, _ in
                 validatePage()
@@ -537,6 +517,7 @@ struct ItemButton: View {
         .onDrop(of: [UTType.text], delegate: ItemDropDelegate(
             item: item,
             layer: layer,
+            appBundleIdentifier: item.appBundleIdentifier,
             isDragging: $isDragging,
             isDropTarget: $isDropTarget,
             scale: $scale,
@@ -571,6 +552,7 @@ struct ItemButton: View {
 struct ItemDropDelegate: SwiftUI.DropDelegate {
     let item: PanelItem
     let layer: PanelLayer
+    let appBundleIdentifier: String?
     @Binding var isDragging: Bool
     @Binding var isDropTarget: Bool
     @Binding var scale: CGFloat
@@ -622,7 +604,7 @@ struct ItemDropDelegate: SwiftUI.DropDelegate {
 
             DispatchQueue.main.async {
                 // Find the dragged item and target item
-                let items = DataManager.shared.getItems(for: layer)
+                let items = DataManager.shared.getItems(for: layer, appBundleIdentifier: appBundleIdentifier)
                 guard let draggedIndex = items.firstIndex(where: { $0.id == draggedId }),
                       let targetIndex = items.firstIndex(where: { $0.id == item.id }),
                       draggedIndex != targetIndex else {
@@ -631,7 +613,12 @@ struct ItemDropDelegate: SwiftUI.DropDelegate {
 
                 // Perform the swap in DataManager
                 hasSwapped = true
-                DataManager.shared.swapItems(layer: layer, fromIndex: draggedIndex, toIndex: targetIndex)
+                DataManager.shared.swapItems(
+                    layer: layer,
+                    appBundleIdentifier: appBundleIdentifier,
+                    fromIndex: draggedIndex,
+                    toIndex: targetIndex
+                )
             }
         }
     }

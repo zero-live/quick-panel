@@ -9,35 +9,47 @@ import Foundation
 
 struct PageGroup: Codable {
     var groups: [String: [Int: String]] = [:] // [layerName: [pageIndex: groupName]]
-    
-    func getGroupName(layer: PanelLayer, page: Int) -> String? {
-        return groups[layer.rawValue]?[page]
+
+    func getGroupName(scopeKey: String, page: Int) -> String? {
+        return groups[scopeKey]?[page]
     }
-    
-    func maxPage(for layer: PanelLayer) -> Int {
-        guard let layerGroups = groups[layer.rawValue], !layerGroups.isEmpty else {
+
+    func getGroupName(layer: PanelLayer, page: Int) -> String? {
+        return getGroupName(scopeKey: layer.rawValue, page: page)
+    }
+
+    func maxPage(for scopeKey: String) -> Int {
+        guard let layerGroups = groups[scopeKey], !layerGroups.isEmpty else {
             return 0
         }
         return layerGroups.keys.max() ?? 0
     }
-    
-    mutating func setGroupName(layer: PanelLayer, page: Int, name: String?) {
-        if groups[layer.rawValue] == nil {
-            groups[layer.rawValue] = [:]
+
+    func maxPage(for layer: PanelLayer) -> Int {
+        return maxPage(for: layer.rawValue)
+    }
+
+    mutating func setGroupName(scopeKey: String, page: Int, name: String?) {
+        if groups[scopeKey] == nil {
+            groups[scopeKey] = [:]
         }
-        
+
         if let name = name, !name.isEmpty {
-            groups[layer.rawValue]?[page] = name
+            groups[scopeKey]?[page] = name
         } else {
-            groups[layer.rawValue]?[page] = nil
+            groups[scopeKey]?[page] = nil
         }
     }
 
-    mutating func removePage(layer: PanelLayer, page: Int) {
-        guard var layerGroups = groups[layer.rawValue] else { return }
-        
+    mutating func setGroupName(layer: PanelLayer, page: Int, name: String?) {
+        setGroupName(scopeKey: layer.rawValue, page: page, name: name)
+    }
+
+    mutating func removePage(scopeKey: String, page: Int) {
+        guard var layerGroups = groups[scopeKey] else { return }
+
         layerGroups.removeValue(forKey: page)
-        
+
         var shifted: [Int: String] = [:]
         for (key, value) in layerGroups {
             if key > page {
@@ -46,7 +58,11 @@ struct PageGroup: Codable {
                 shifted[key] = value
             }
         }
-        
-        groups[layer.rawValue] = shifted.isEmpty ? nil : shifted
+
+        groups[scopeKey] = shifted.isEmpty ? nil : shifted
+    }
+
+    mutating func removePage(layer: PanelLayer, page: Int) {
+        removePage(scopeKey: layer.rawValue, page: page)
     }
 }
