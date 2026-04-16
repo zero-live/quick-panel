@@ -1503,14 +1503,11 @@ struct CompactItemRow: View {
     }
 
     private var itemSubtitle: String {
-        if item.type == .application {
+        switch item.type {
+        case .application:
+            return item.path
+        case .website:
             return item.path
         }
-
-        if let appBundleIdentifier = item.appBundleIdentifier, !appBundleIdentifier.isEmpty {
-            return appBundleIdentifier
-        }
-
-        return item.path
     }
 }
