@@ -375,9 +375,14 @@ struct AppearanceTab: View {
 
 struct ItemManagementTab: View {
     @ObservedObject var dataManager = DataManager.shared
+    @ObservedObject var contextDetector = ContextDetector.shared
     @State private var pendingDeleteItem: PanelItem?
+    @State private var showingBatchDeleteAlert = false
     @State private var searchText = ""
     @State private var selectedFilter: ItemManagementFilter = .all
+    @State private var expandedLowerGroups: Set<String> = []
+    @State private var isSelectionMode = false
+    @State private var selectedItemIDs: Set<UUID> = []
 
     var upperItems: [PanelItem] {
         filteredItems(dataManager.getItems(for: .upper))
@@ -395,11 +400,44 @@ struct ItemManagementTab: View {
             )
         }
         .sorted { lhs, rhs in
+            if lhs.id == prioritizedLowerGroupID && rhs.id != prioritizedLowerGroupID {
+                return true
+            }
+            if rhs.id == prioritizedLowerGroupID && lhs.id != prioritizedLowerGroupID {
+                return false
+            }
             if lhs.isUnbound != rhs.isUnbound {
                 return !lhs.isUnbound
             }
+            if lhs.items.count != rhs.items.count {
+                return lhs.items.count > rhs.items.count
+            }
             return lhs.displayName.localizedStandardCompare(rhs.displayName) == .orderedAscending
         }
+    }
+
+    var prioritizedLowerGroupID: String? {
+        contextDetector.currentApp?.bundleIdentifier
+    }
+
+    var activeFilterSummary: String? {
+        var parts: [String] = []
+
+        if selectedFilter != .all {
+            parts.append("筛选：\(selectedFilter.title)")
+        }
+
+        let trimmedKeyword = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedKeyword.isEmpty {
+            parts.append("搜索：\(trimmedKeyword)")
+        }
+
+        guard !parts.isEmpty else { return nil }
+        return parts.joined(separator: " · ")
+    }
+
+    var hasActiveFilter: Bool {
+        selectedFilter != .all || !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     var body: some View {
@@ -417,6 +455,12 @@ struct ItemManagementTab: View {
                     Spacer()
 
                     HStack(spacing: 8) {
+                        Button(isSelectionMode ? "完成选择" : "批量操作") {
+                            toggleSelectionMode()
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+
                         Button(action: {
                             AddItemWindowManager.shared.showAddItemWindow(layer: .upper, appBundleId: nil, appName: nil)
                         }) {
@@ -438,6 +482,35 @@ struct ItemManagementTab: View {
                         }
                         .buttonStyle(.borderedProminent)
                         .controlSize(.small)
+                    }
+                }
+
+                if isSelectionMode {
+                    HStack(spacing: 10) {
+                        Text("已选择 \(selectedItemIDs.count) 项")
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+
+                        Spacer()
+
+                        Button("全选当前结果") {
+                            selectAllVisibleItems()
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundColor(.blue)
+
+                        Button("清空选择") {
+                            selectedItemIDs.removeAll()
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundColor(.secondary)
+
+                        Button("批量删除") {
+                            showingBatchDeleteAlert = true
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundColor(selectedItemIDs.isEmpty ? .secondary : .red)
+                        .disabled(selectedItemIDs.isEmpty)
                     }
                 }
 
@@ -475,6 +548,24 @@ struct ItemManagementTab: View {
                     .pickerStyle(.segmented)
                     .frame(width: 220)
                 }
+
+                if let activeFilterSummary {
+                    HStack(spacing: 8) {
+                        Image(systemName: "line.3.horizontal.decrease.circle")
+                            .foregroundColor(.secondary)
+                        Text(activeFilterSummary)
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+
+                        Spacer()
+
+                        Button("清空筛选") {
+                            clearFilters()
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundColor(.blue)
+                    }
+                }
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
@@ -488,7 +579,14 @@ struct ItemManagementTab: View {
                         EmptyStateView(icon: "star", message: selectedFilter == .lower ? "当前筛选下无常用项目" : "暂无匹配的常用项目")
                     } else {
                         ForEach(upperItems) { item in
-                            CompactItemRow(item: item) {
+                            CompactItemRow(
+                                item: item,
+                                isSelectionMode: isSelectionMode,
+                                isSelected: selectedItemIDs.contains(item.id),
+                                onToggleSelection: {
+                                    toggleSelection(for: item)
+                                }
+                            ) {
                                 pendingDeleteItem = item
                             }
                         }
@@ -499,7 +597,7 @@ struct ItemManagementTab: View {
                         }
                     }
                 } header: {
-                    Text("常用功能")
+                    Text("常用功能 (\(upperItems.count))")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundColor(.secondary)
                         .textCase(.uppercase)
@@ -510,9 +608,27 @@ struct ItemManagementTab: View {
                         EmptyStateView(icon: "apps.iphone", message: selectedFilter == .upper ? "当前筛选下无下层项目" : "暂无匹配的下层项目")
                     } else {
                         ForEach(lowerItemGroups) { group in
-                            DisclosureGroup {
+                            DisclosureGroup(
+                                isExpanded: Binding(
+                                    get: { expandedLowerGroups.contains(group.id) },
+                                    set: { isExpanded in
+                                        if isExpanded {
+                                            expandedLowerGroups.insert(group.id)
+                                        } else {
+                                            expandedLowerGroups.remove(group.id)
+                                        }
+                                    }
+                                )
+                            ) {
                                 ForEach(group.items) { item in
-                                    CompactItemRow(item: item) {
+                                    CompactItemRow(
+                                        item: item,
+                                        isSelectionMode: isSelectionMode,
+                                        isSelected: selectedItemIDs.contains(item.id),
+                                        onToggleSelection: {
+                                            toggleSelection(for: item)
+                                        }
+                                    ) {
                                         pendingDeleteItem = item
                                     }
                                         .padding(.leading, 8)
@@ -523,7 +639,7 @@ struct ItemManagementTab: View {
                         }
                     }
                 } header: {
-                    Text("应用项目")
+                    Text("应用项目 (\(lowerGroupsItemCount))")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundColor(.secondary)
                         .textCase(.uppercase)
@@ -555,10 +671,79 @@ struct ItemManagementTab: View {
                 Text("此操作不可撤销。")
             }
         }
+        .alert("确认批量删除", isPresented: $showingBatchDeleteAlert) {
+            Button("取消", role: .cancel) {}
+            Button("删除", role: .destructive) {
+                deleteSelectedItems()
+            }
+        } message: {
+            Text("将删除已选择的 \(selectedItemIDs.count) 个项目。此操作不可撤销。")
+        }
+        .onAppear {
+            syncExpandedGroups()
+        }
+        .onChange(of: lowerItemGroups.map(\.id)) { _, _ in
+            syncExpandedGroups()
+        }
+        .onReceive(contextDetector.$currentApp) { _ in
+            syncExpandedGroups()
+        }
     }
 
     private var filteredItemCount: Int {
         filteredItems(dataManager.items).count
+    }
+
+    private var lowerGroupsItemCount: Int {
+        lowerItemGroups.reduce(0) { $0 + $1.items.count }
+    }
+
+    private func clearFilters() {
+        searchText = ""
+        selectedFilter = .all
+    }
+
+    private var visibleItems: [PanelItem] {
+        upperItems + lowerItemGroups.flatMap(\.items)
+    }
+
+    private func toggleSelectionMode() {
+        isSelectionMode.toggle()
+        if !isSelectionMode {
+            selectedItemIDs.removeAll()
+        }
+    }
+
+    private func toggleSelection(for item: PanelItem) {
+        if selectedItemIDs.contains(item.id) {
+            selectedItemIDs.remove(item.id)
+        } else {
+            selectedItemIDs.insert(item.id)
+        }
+    }
+
+    private func selectAllVisibleItems() {
+        selectedItemIDs = Set(visibleItems.map(\.id))
+    }
+
+    private func deleteSelectedItems() {
+        let selectedItems = dataManager.items.filter { selectedItemIDs.contains($0.id) }
+        for item in selectedItems {
+            dataManager.deleteItem(item)
+        }
+        selectedItemIDs.removeAll()
+        isSelectionMode = false
+    }
+
+    private func syncExpandedGroups() {
+        let availableGroupIDs = Set(lowerItemGroups.map(\.id))
+        expandedLowerGroups = expandedLowerGroups.intersection(availableGroupIDs)
+
+        if let prioritizedLowerGroupID, availableGroupIDs.contains(prioritizedLowerGroupID) {
+            expandedLowerGroups.insert(prioritizedLowerGroupID)
+        } else if expandedLowerGroups.isEmpty, let firstGroupID = lowerItemGroups.first?.id {
+            expandedLowerGroups.insert(firstGroupID)
+        }
     }
 
     private func filteredItems(_ items: [PanelItem]) -> [PanelItem] {
@@ -1182,10 +1367,24 @@ struct EmptyStateView: View {
 
 struct CompactItemRow: View {
     let item: PanelItem
+    let isSelectionMode: Bool
+    let isSelected: Bool
+    let onToggleSelection: () -> Void
     let onDelete: () -> Void
 
     var body: some View {
         HStack(spacing: 8) {
+            if isSelectionMode {
+                Button(action: {
+                    onToggleSelection()
+                }) {
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 15))
+                        .foregroundColor(isSelected ? .accentColor : .secondary)
+                }
+                .buttonStyle(.plain)
+            }
+
             if let icon = item.getIcon() {
                 Image(nsImage: icon)
                     .resizable()
@@ -1202,23 +1401,25 @@ struct CompactItemRow: View {
 
             Spacer()
 
-            Button(action: {
-                AddItemWindowManager.shared.showEditItemWindow(item: item)
-            }) {
-                Image(systemName: "pencil")
-                    .font(.system(size: 11))
-            }
-            .buttonStyle(.plain)
-            .foregroundColor(.blue)
+            if !isSelectionMode {
+                Button(action: {
+                    AddItemWindowManager.shared.showEditItemWindow(item: item)
+                }) {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(.blue)
 
-            Button(action: {
-                onDelete()
-            }) {
-                Image(systemName: "trash")
-                    .font(.system(size: 11))
+                Button(action: {
+                    onDelete()
+                }) {
+                    Image(systemName: "trash")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(.red)
             }
-            .buttonStyle(.plain)
-            .foregroundColor(.red)
         }
         .padding(.vertical, 2)
     }
