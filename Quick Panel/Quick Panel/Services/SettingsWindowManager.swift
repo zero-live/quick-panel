@@ -28,13 +28,14 @@ class SettingsWindowManager {
 
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 600, height: 500),
-            styleMask: [.titled, .closable, .miniaturizable],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
 
         window.title = "Quick Panel 设置"
         window.contentViewController = hostingController
+        window.minSize = NSSize(width: 600, height: 500)
         window.setFrameAutosaveName("Settings")
         window.isReleasedWhenClosed = false
 

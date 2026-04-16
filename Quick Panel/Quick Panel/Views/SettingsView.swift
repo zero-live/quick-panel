@@ -39,7 +39,8 @@ struct SettingsView: View {
                 }
                 .tag(3)
         }
-        .frame(width: 600, height: 500)
+        .frame(minWidth: 600, minHeight: 500)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -84,10 +85,8 @@ struct GridSettingsTab: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Content area with ScrollView
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                    // Upper Layer Header
                     HStack {
                         Image(systemName: "square.grid.2x2")
                             .foregroundColor(.blue)
@@ -97,7 +96,6 @@ struct GridSettingsTab: View {
                         Spacer()
                     }
 
-                    // Upper Columns
                     SettingRow(
                         icon: "square.split.2x1",
                         title: "列数",
@@ -109,7 +107,6 @@ struct GridSettingsTab: View {
 
                     Divider()
 
-                    // Upper Rows
                     SettingRow(
                         icon: "square.split.1x2",
                         title: "行数",
@@ -121,7 +118,6 @@ struct GridSettingsTab: View {
 
                     Divider()
 
-                    // Lower Layer Header
                     HStack {
                         Image(systemName: "square.grid.2x2")
                             .foregroundColor(.green)
@@ -131,7 +127,6 @@ struct GridSettingsTab: View {
                         Spacer()
                     }
 
-                    // Lower Columns
                     SettingRow(
                         icon: "square.split.2x1",
                         title: "列数",
@@ -143,7 +138,6 @@ struct GridSettingsTab: View {
 
                     Divider()
 
-                    // Lower Rows
                     SettingRow(
                         icon: "square.split.1x2",
                         title: "行数",
@@ -155,7 +149,6 @@ struct GridSettingsTab: View {
 
                     Divider()
 
-                    // Spacing
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {
                             Image(systemName: "arrow.left.and.right")
@@ -181,7 +174,6 @@ struct GridSettingsTab: View {
 
                     Divider()
 
-                    // Preview
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {
                             Image(systemName: "eye")
@@ -271,10 +263,8 @@ struct AppearanceTab: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Content area with ScrollView
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                    // Opacity
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {
                             Image(systemName: "circle.lefthalf.filled")
@@ -300,7 +290,6 @@ struct AppearanceTab: View {
 
                     Divider()
 
-                    // Preview
                     VStack(alignment: .leading, spacing: 16) {
                         HStack {
                             Image(systemName: "eye")
@@ -387,13 +376,15 @@ struct AppearanceTab: View {
 struct ItemManagementTab: View {
     @ObservedObject var dataManager = DataManager.shared
     @State private var pendingDeleteItem: PanelItem?
+    @State private var searchText = ""
+    @State private var selectedFilter: ItemManagementFilter = .all
 
     var upperItems: [PanelItem] {
-        dataManager.getItems(for: .upper)
+        filteredItems(dataManager.getItems(for: .upper))
     }
 
     var lowerItemGroups: [LowerItemGroup] {
-        let groupedItems = Dictionary(grouping: dataManager.items.filter { $0.layer == .lower }) { item in
+        let groupedItems = Dictionary(grouping: filteredItems(dataManager.items.filter { $0.layer == .lower })) { item in
             item.appBundleIdentifier ?? LowerItemGroup.unboundIdentifier
         }
 
@@ -413,40 +404,76 @@ struct ItemManagementTab: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header
-            HStack {
-                HStack(spacing: 6) {
-                    Image(systemName: "square.grid.3x3")
-                        .foregroundColor(.blue)
-                    Text("\(dataManager.items.count) 个项目")
-                        .font(.system(size: 13))
-                        .foregroundColor(.secondary)
+            VStack(spacing: 12) {
+                HStack {
+                    HStack(spacing: 6) {
+                        Image(systemName: "square.grid.3x3")
+                            .foregroundColor(.blue)
+                        Text("\(filteredItemCount) / \(dataManager.items.count) 个项目")
+                            .font(.system(size: 13))
+                            .foregroundColor(.secondary)
+                    }
+
+                    Spacer()
+
+                    HStack(spacing: 8) {
+                        Button(action: {
+                            AddItemWindowManager.shared.showAddItemWindow(layer: .upper, appBundleId: nil, appName: nil)
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "star")
+                                Text("添加常用")
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+
+                        Button(action: {
+                            AddItemWindowManager.shared.showAddItemWindow(layer: .lower, appBundleId: nil, appName: nil)
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "app")
+                                Text("添加下层")
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                    }
                 }
 
-                Spacer()
+                HStack(spacing: 10) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundColor(.secondary)
+                        TextField("搜索名称、路径或应用标识", text: $searchText)
+                            .textFieldStyle(.plain)
 
-                HStack(spacing: 8) {
-                    Button(action: {
-                        AddItemWindowManager.shared.showAddItemWindow(layer: .upper, appBundleId: nil, appName: nil)
-                    }) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "star")
-                            Text("添加常用")
+                        if !searchText.isEmpty {
+                            Button(action: {
+                                searchText = ""
+                            }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundColor(.secondary)
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(Color(NSColor.textBackgroundColor))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                    )
+                    .cornerRadius(8)
 
-                    Button(action: {
-                        AddItemWindowManager.shared.showAddItemWindow(layer: .lower, appBundleId: nil, appName: nil)
-                    }) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "app")
-                            Text("添加下层")
+                    Picker("筛选", selection: $selectedFilter) {
+                        ForEach(ItemManagementFilter.allCases) { filter in
+                            Text(filter.title).tag(filter)
                         }
                     }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
+                    .pickerStyle(.segmented)
+                    .frame(width: 220)
                 }
             }
             .padding(.horizontal, 20)
@@ -455,11 +482,10 @@ struct ItemManagementTab: View {
 
             Divider()
 
-            // List
             List {
                 Section {
                     if upperItems.isEmpty {
-                        EmptyStateView(icon: "star", message: "暂无常用功能")
+                        EmptyStateView(icon: "star", message: selectedFilter == .lower ? "当前筛选下无常用项目" : "暂无匹配的常用项目")
                     } else {
                         ForEach(upperItems) { item in
                             CompactItemRow(item: item) {
@@ -481,7 +507,7 @@ struct ItemManagementTab: View {
 
                 Section {
                     if lowerItemGroups.isEmpty {
-                        EmptyStateView(icon: "apps.iphone", message: "暂无应用项目")
+                        EmptyStateView(icon: "apps.iphone", message: selectedFilter == .upper ? "当前筛选下无下层项目" : "暂无匹配的下层项目")
                     } else {
                         ForEach(lowerItemGroups) { group in
                             DisclosureGroup {
@@ -528,6 +554,66 @@ struct ItemManagementTab: View {
             } else {
                 Text("此操作不可撤销。")
             }
+        }
+    }
+
+    private var filteredItemCount: Int {
+        filteredItems(dataManager.items).count
+    }
+
+    private func filteredItems(_ items: [PanelItem]) -> [PanelItem] {
+        items.filter { item in
+            matchesFilter(item) && matchesSearch(item)
+        }
+    }
+
+    private func matchesFilter(_ item: PanelItem) -> Bool {
+        switch selectedFilter {
+        case .all:
+            return true
+        case .upper:
+            return item.layer == .upper
+        case .lower:
+            return item.layer == .lower
+        case .application:
+            return item.type == .application
+        case .website:
+            return item.type == .website
+        }
+    }
+
+    private func matchesSearch(_ item: PanelItem) -> Bool {
+        let keyword = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !keyword.isEmpty else { return true }
+
+        let lowercasedKeyword = keyword.lowercased()
+        return item.name.lowercased().contains(lowercasedKeyword) ||
+            item.path.lowercased().contains(lowercasedKeyword) ||
+            (item.appBundleIdentifier?.lowercased().contains(lowercasedKeyword) ?? false)
+    }
+}
+
+enum ItemManagementFilter: String, CaseIterable, Identifiable {
+    case all
+    case upper
+    case lower
+    case application
+    case website
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .all:
+            return "全部"
+        case .upper:
+            return "常用"
+        case .lower:
+            return "下层"
+        case .application:
+            return "应用"
+        case .website:
+            return "网站"
         }
     }
 }
@@ -830,6 +916,12 @@ struct AdvancedTab: View {
         .onAppear {
             refreshAccessibilityStatus()
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            refreshAccessibilityStatus()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
+            refreshAccessibilityStatus()
+        }
     }
 
     private func refreshAccessibilityStatus() {
@@ -983,6 +1075,47 @@ struct SettingRow<Content: View>: View {
 
             content
         }
+        .padding(.vertical, 4)
+    }
+}
+
+struct SettingsCard<Content: View>: View {
+    let title: String
+    let icon: String
+    let tint: Color
+    let content: Content
+
+    init(title: String, icon: String, tint: Color, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.icon = icon
+        self.tint = tint
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .foregroundColor(tint)
+                    .frame(width: 20)
+
+                Text(title)
+                    .font(.system(size: 13, weight: .semibold))
+
+                Spacer()
+            }
+
+            VStack(alignment: .leading, spacing: 14) {
+                content
+            }
+        }
+        .padding(16)
+        .background(Color(NSColor.controlBackgroundColor).opacity(0.65))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.primary.opacity(0.06), lineWidth: 1)
+        )
+        .cornerRadius(10)
     }
 }
 
