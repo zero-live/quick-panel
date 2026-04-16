@@ -273,64 +273,19 @@ struct LayerGridView: View {
                 }
             }
             .overlay(alignment: .center) {
-                // Center: Group name (double-click to edit) - absolutely centered
-                if let groupName = currentGroupName, !groupName.isEmpty {
-                    Text(groupName)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(.blue.opacity(0.8))
-                        .contentShape(Rectangle())
-                        .onTapGesture(count: 2) {
-                            editingGroupName = groupName
-                            showingGroupNameEditor = true
+                GroupNameHeaderView(
+                    groupName: currentGroupName,
+                    onEdit: beginEditingGroupName
+                )
+                .popover(isPresented: $showingGroupNameEditor) {
+                    GroupNameEditorView(
+                        groupName: $editingGroupName,
+                        onSave: saveGroupName,
+                        onCancel: {
+                            showingGroupNameEditor = false
                         }
-                        .help("双击编辑分组名称")
-                        .popover(isPresented: $showingGroupNameEditor) {
-                            GroupNameEditorView(
-                                groupName: $editingGroupName,
-                                onSave: {
-                                    let trimmedName = editingGroupName.trimmingCharacters(in: .whitespacesAndNewlines)
-                                    dataManager.setPageGroup(
-                                        layer: layer,
-                                        page: page,
-                                        name: trimmedName.isEmpty ? nil : trimmedName,
-                                        appBundleIdentifier: pageScopeAppBundleId
-                                    )
-                                    showingGroupNameEditor = false
-                                },
-                                onCancel: {
-                                    showingGroupNameEditor = false
-                                }
-                            )
-                            .frame(width: 250, height: 100)
-                        }
-                } else {
-                    // Invisible placeholder for double-click to add group name
-                    Color.clear
-                        .frame(width: 80, height: 16)
-                        .contentShape(Rectangle())
-                        .onTapGesture(count: 2) {
-                            editingGroupName = ""
-                            showingGroupNameEditor = true
-                        }
-                        .popover(isPresented: $showingGroupNameEditor) {
-                            GroupNameEditorView(
-                                groupName: $editingGroupName,
-                                onSave: {
-                                    let trimmedName = editingGroupName.trimmingCharacters(in: .whitespacesAndNewlines)
-                                    dataManager.setPageGroup(
-                                        layer: layer,
-                                        page: page,
-                                        name: trimmedName.isEmpty ? nil : trimmedName,
-                                        appBundleIdentifier: pageScopeAppBundleId
-                                    )
-                                    showingGroupNameEditor = false
-                                },
-                                onCancel: {
-                                    showingGroupNameEditor = false
-                                }
-                            )
-                            .frame(width: 250, height: 100)
-                        }
+                    )
+                    .frame(width: 250, height: 100)
                 }
             }
             .onChange(of: items.count) { _, _ in
@@ -383,6 +338,22 @@ struct LayerGridView: View {
                 .padding(.bottom, 8)
             }
         }
+    }
+
+    private func beginEditingGroupName() {
+        editingGroupName = currentGroupName ?? ""
+        showingGroupNameEditor = true
+    }
+
+    private func saveGroupName() {
+        let trimmedName = editingGroupName.trimmingCharacters(in: .whitespacesAndNewlines)
+        dataManager.setPageGroup(
+            layer: layer,
+            page: page,
+            name: trimmedName.isEmpty ? nil : trimmedName,
+            appBundleIdentifier: pageScopeAppBundleId
+        )
+        showingGroupNameEditor = false
     }
 }
 
@@ -450,6 +421,42 @@ struct DragHandleView: View {
         }
         .frame(maxWidth: .infinity)
         .contentShape(Rectangle())
+    }
+}
+
+struct GroupNameHeaderView: View {
+    let groupName: String?
+    let onEdit: () -> Void
+
+    private var hasGroupName: Bool {
+        !(groupName?.isEmpty ?? true)
+    }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            if let groupName, !groupName.isEmpty {
+                Text(groupName)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.blue.opacity(0.85))
+                    .lineLimit(1)
+            } else {
+                Text("命名分组")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.secondary)
+            }
+
+            Button(action: onEdit) {
+                Image(systemName: hasGroupName ? "pencil" : "plus.circle")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(hasGroupName ? .blue.opacity(0.8) : .secondary)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Color.primary.opacity(0.04))
+        .cornerRadius(8)
+        .help(hasGroupName ? "编辑分组名称" : "为当前页命名")
     }
 }
 
