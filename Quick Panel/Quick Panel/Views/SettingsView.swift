@@ -440,6 +440,14 @@ struct ItemManagementTab: View {
         selectedFilter != .all || !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    var visibleItemIDs: Set<UUID> {
+        Set(visibleItems.map(\.id))
+    }
+
+    var areAllVisibleItemsSelected: Bool {
+        !visibleItems.isEmpty && visibleItemIDs.isSubset(of: selectedItemIDs)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             VStack(spacing: 12) {
@@ -493,8 +501,8 @@ struct ItemManagementTab: View {
 
                         Spacer()
 
-                        Button("全选当前结果") {
-                            selectAllVisibleItems()
+                        Button(areAllVisibleItemsSelected ? "取消全选" : "全选当前结果") {
+                            toggleSelectAllVisibleItems()
                         }
                         .buttonStyle(.plain)
                         .foregroundColor(.blue)
@@ -631,10 +639,18 @@ struct ItemManagementTab: View {
                                     ) {
                                         pendingDeleteItem = item
                                     }
-                                        .padding(.leading, 8)
+                                    .padding(.leading, 8)
                                 }
                             } label: {
-                                LowerItemGroupHeader(group: group)
+                                LowerItemGroupHeader(
+                                    group: group,
+                                    isSelectionMode: isSelectionMode,
+                                    selectedCount: selectedCount(in: group),
+                                    areAllSelected: areAllItemsSelected(in: group),
+                                    onToggleSelection: {
+                                        toggleSelection(for: group)
+                                    }
+                                )
                             }
                         }
                     }
@@ -685,6 +701,9 @@ struct ItemManagementTab: View {
         .onChange(of: lowerItemGroups.map(\.id)) { _, _ in
             syncExpandedGroups()
         }
+        .onChange(of: visibleItemIDs) { _, _ in
+            syncSelectionWithVisibleItems()
+        }
         .onReceive(contextDetector.$currentApp) { _ in
             syncExpandedGroups()
         }
@@ -722,8 +741,21 @@ struct ItemManagementTab: View {
         }
     }
 
-    private func selectAllVisibleItems() {
-        selectedItemIDs = Set(visibleItems.map(\.id))
+    private func toggleSelection(for group: LowerItemGroup) {
+        let groupItemIDs = Set(group.items.map(\.id))
+        if groupItemIDs.isSubset(of: selectedItemIDs) {
+            selectedItemIDs.subtract(groupItemIDs)
+        } else {
+            selectedItemIDs.formUnion(groupItemIDs)
+        }
+    }
+
+    private func toggleSelectAllVisibleItems() {
+        if areAllVisibleItemsSelected {
+            selectedItemIDs.subtract(visibleItemIDs)
+        } else {
+            selectedItemIDs.formUnion(visibleItemIDs)
+        }
     }
 
     private func deleteSelectedItems() {
@@ -735,6 +767,13 @@ struct ItemManagementTab: View {
         isSelectionMode = false
     }
 
+    private func syncSelectionWithVisibleItems() {
+        selectedItemIDs = selectedItemIDs.intersection(visibleItemIDs)
+        if isSelectionMode && visibleItems.isEmpty {
+            selectedItemIDs.removeAll()
+        }
+    }
+
     private func syncExpandedGroups() {
         let availableGroupIDs = Set(lowerItemGroups.map(\.id))
         expandedLowerGroups = expandedLowerGroups.intersection(availableGroupIDs)
@@ -744,6 +783,16 @@ struct ItemManagementTab: View {
         } else if expandedLowerGroups.isEmpty, let firstGroupID = lowerItemGroups.first?.id {
             expandedLowerGroups.insert(firstGroupID)
         }
+    }
+
+    private func selectedCount(in group: LowerItemGroup) -> Int {
+        group.items.reduce(0) { partialResult, item in
+            partialResult + (selectedItemIDs.contains(item.id) ? 1 : 0)
+        }
+    }
+
+    private func areAllItemsSelected(in group: LowerItemGroup) -> Bool {
+        !group.items.isEmpty && group.items.allSatisfy { selectedItemIDs.contains($0.id) }
     }
 
     private func filteredItems(_ items: [PanelItem]) -> [PanelItem] {
@@ -860,6 +909,10 @@ struct LowerItemGroup: Identifiable {
 
 struct LowerItemGroupHeader: View {
     let group: LowerItemGroup
+    let isSelectionMode: Bool
+    let selectedCount: Int
+    let areAllSelected: Bool
+    let onToggleSelection: () -> Void
 
     var body: some View {
         HStack(spacing: 10) {
@@ -896,6 +949,25 @@ struct LowerItemGroupHeader: View {
                 .padding(.vertical, 2)
                 .background(Color.secondary.opacity(0.15))
                 .cornerRadius(6)
+
+            if isSelectionMode {
+                Button(areAllSelected ? "取消全选" : "全选") {
+                    onToggleSelection()
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 11))
+                .foregroundColor(.blue)
+
+                if selectedCount > 0 {
+                    Text("已选 \(selectedCount)")
+                        .font(.system(size: 11))
+                        .foregroundColor(.accentColor)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.accentColor.opacity(0.12))
+                        .cornerRadius(6)
+                }
+            }
         }
         .padding(.vertical, 2)
     }
@@ -1394,9 +1466,10 @@ struct CompactItemRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.name)
                     .font(.system(size: 12))
-                Text(item.type == .application ? "应用" : "网站")
+                Text(itemSubtitle)
                     .font(.system(size: 10))
                     .foregroundColor(.secondary)
+                    .lineLimit(1)
             }
 
             Spacer()
@@ -1422,5 +1495,22 @@ struct CompactItemRow: View {
             }
         }
         .padding(.vertical, 2)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            guard isSelectionMode else { return }
+            onToggleSelection()
+        }
+    }
+
+    private var itemSubtitle: String {
+        if item.type == .application {
+            return item.path
+        }
+
+        if let appBundleIdentifier = item.appBundleIdentifier, !appBundleIdentifier.isEmpty {
+            return appBundleIdentifier
+        }
+
+        return item.path
     }
 }
