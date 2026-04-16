@@ -38,86 +38,73 @@ struct AddItemView: View {
     }
 
     var body: some View {
-        VStack(spacing: 20) {
-            Text("添加项目")
-                .font(.title2)
-                .bold()
+        VStack(spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    Text("添加项目")
+                        .font(.title2)
+                        .bold()
 
-            Form {
-                Picker("层级", selection: $layer) {
-                    Text("上层（常用）").tag(PanelLayer.upper)
-                    Text("下层").tag(PanelLayer.lower)
-                }
-                .pickerStyle(.segmented)
-
-                if layer == .lower {
-                    lowerLayerBindingSection
-                }
-
-                Picker("类型", selection: $itemType) {
-                    Text("应用程序").tag(ItemType.application)
-                    Text("网站").tag(ItemType.website)
-                }
-                .pickerStyle(.segmented)
-
-                TextField("名称", text: $name)
-
-                if itemType == .application {
-                    HStack {
-                        TextField("应用路径", text: $path)
-                        Button("选择...") {
-                            selectItemApplication()
+                    Form {
+                        Picker("层级", selection: $layer) {
+                            Text("上层（常用）").tag(PanelLayer.upper)
+                            Text("下层").tag(PanelLayer.lower)
                         }
-                    }
-                } else {
-                    VStack(alignment: .leading, spacing: 8) {
-                        TextField("网址", text: $path)
-                            .textContentType(.URL)
-                            .onChange(of: path) { oldValue, newValue in
-                                // Auto-fill name from domain if name is empty
-                                if name.isEmpty,
-                                   let url = URLNormalizer.normalizedURL(from: newValue),
-                                   let host = url.host {
-                                    name = host
+                        .pickerStyle(.segmented)
+
+                        if layer == .lower {
+                            lowerLayerBindingSection
+                        }
+
+                        Picker("类型", selection: $itemType) {
+                            Text("应用程序").tag(ItemType.application)
+                            Text("网站").tag(ItemType.website)
+                        }
+                        .pickerStyle(.segmented)
+
+                        TextField("名称", text: $name)
+
+                        if itemType == .application {
+                            HStack(spacing: 10) {
+                                TextField("应用路径", text: $path)
+                                Button("选择...") {
+                                    selectItemApplication()
                                 }
                             }
+                        } else {
+                            VStack(alignment: .leading, spacing: 12) {
+                                TextField("网址", text: $path)
+                                    .textContentType(.URL)
+                                    .onChange(of: path) { _, newValue in
+                                        if name.isEmpty,
+                                           let url = URLNormalizer.normalizedURL(from: newValue),
+                                           let host = url.host {
+                                            name = host
+                                        }
+                                    }
 
-                        HStack {
-                            if let icon = customIcon {
-                                Image(nsImage: icon)
-                                    .resizable()
-                                    .frame(width: 32, height: 32)
-                            }
-
-                            VStack(alignment: .leading, spacing: 4) {
-                                Button(isFetchingIcon ? "获取中..." : "自动获取图标") {
-                                    fetchWebsiteIcon()
-                                }
-                                .disabled(path.isEmpty || isFetchingIcon)
-
-                                Button("选择本地图标...") {
-                                    selectImageFile()
-                                }
-                            }
-
-                            if customIcon != nil {
-                                Button("清除图标") {
-                                    customIcon = nil
-                                }
+                                WebsiteIconEditor(
+                                    icon: customIcon,
+                                    isFetchingIcon: isFetchingIcon,
+                                    hasURL: !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                                    onFetchIcon: fetchWebsiteIcon,
+                                    onSelectLocalIcon: selectImageFile,
+                                    onClearIcon: {
+                                        customIcon = nil
+                                    }
+                                )
                             }
                         }
                     }
-                }
-            }
-            .padding()
 
-            if let validationMessage {
-                Text(validationMessage)
-                    .font(.system(size: 12))
-                    .foregroundColor(.red)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal)
+                    if let validationMessage {
+                        InlineValidationMessage(message: validationMessage)
+                    }
+                }
+                .padding(20)
             }
+
+            Divider()
 
             HStack {
                 Button("取消") {
@@ -134,9 +121,11 @@ struct AddItemView: View {
                 .keyboardShortcut(.defaultAction)
                 .disabled(!canSave)
             }
-            .padding()
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
+            .background(Color(NSColor.windowBackgroundColor))
         }
-        .frame(width: 520, height: formHeight)
+        .frame(minWidth: 560, minHeight: 420)
         .onAppear {
             initializeForm()
         }
@@ -158,56 +147,63 @@ struct AddItemView: View {
         return true
     }
 
-    private var formHeight: CGFloat {
-        let baseHeight: CGFloat = itemType == .website ? 380 : 330
-        return layer == .lower ? baseHeight + 90 : baseHeight
-    }
-
-    @ViewBuilder
     private var lowerLayerBindingSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            if let appName = presetAppName, let appBundleId = presetAppBundleId {
-                Toggle("绑定到当前应用 (\(appName))", isOn: $bindToCurrentApp)
+        VStack(alignment: .leading, spacing: 12) {
+            if showsBindToCurrentAppToggle {
+                Toggle(bindToCurrentAppTitle, isOn: $bindToCurrentApp)
                     .onChange(of: bindToCurrentApp) { _, newValue in
-                        if newValue {
-                            selectedAppBundleId = appBundleId
-                            selectedAppName = appName
-                        } else if selectedAppBundleId == appBundleId {
-                            selectedAppBundleId = nil
-                            selectedAppName = nil
-                        }
+                        handleBindToCurrentAppChange(newValue)
                     }
             }
 
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("绑定应用")
-                        .font(.system(size: 12, weight: .medium))
-
-                    Text(selectedAppName ?? "未选择")
-                        .font(.system(size: 11))
-                        .foregroundColor(selectedAppBundleId == nil ? .secondary : .primary)
-                }
-
-                Spacer()
-
-                Button("选择应用...") {
-                    selectBindingApplication()
-                }
-
-                if selectedAppBundleId != nil {
-                    Button("清除") {
-                        clearSelectedBinding()
-                    }
-                    .foregroundColor(.red)
-                }
-            }
+            AppBindingSummaryCard(
+                appName: selectedAppName,
+                bundleIdentifier: selectedAppBundleId,
+                icon: selectedBindingAppIcon,
+                selectAction: selectBindingApplication,
+                clearAction: addBindingClearAction
+            )
 
             if selectedAppBundleId == nil {
                 Text("下层项目必须绑定一个目标应用，否则主面板不会显示。")
                     .font(.system(size: 11))
                     .foregroundColor(.orange)
             }
+        }
+    }
+
+    private var selectedBindingAppIcon: NSImage? {
+        guard let selectedAppBundleId,
+              let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: selectedAppBundleId) else {
+            return nil
+        }
+        return NSWorkspace.shared.icon(forFile: appURL.path)
+    }
+
+    private var showsBindToCurrentAppToggle: Bool {
+        presetAppName != nil && presetAppBundleId != nil
+    }
+
+    private var bindToCurrentAppTitle: String {
+        "绑定到当前应用 (\(presetAppName ?? "当前应用"))"
+    }
+
+    private var addBindingClearAction: (() -> Void)? {
+        if selectedAppBundleId != nil {
+            return clearSelectedBinding
+        }
+        return nil
+    }
+
+    private func handleBindToCurrentAppChange(_ newValue: Bool) {
+        guard let appBundleId = presetAppBundleId, let appName = presetAppName else { return }
+
+        if newValue {
+            selectedAppBundleId = appBundleId
+            selectedAppName = appName
+        } else if selectedAppBundleId == appBundleId {
+            selectedAppBundleId = nil
+            selectedAppName = nil
         }
     }
 
@@ -417,72 +413,60 @@ struct EditItemView: View {
     }
 
     var body: some View {
-        VStack(spacing: 20) {
-            Text("编辑项目")
-                .font(.title2)
-                .bold()
+        VStack(spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    Text("编辑项目")
+                        .font(.title2)
+                        .bold()
 
-            Form {
-                Picker("层级", selection: $layer) {
-                    Text("上层（常用）").tag(PanelLayer.upper)
-                    Text("下层").tag(PanelLayer.lower)
-                }
-                .pickerStyle(.segmented)
-
-                if layer == .lower {
-                    lowerLayerBindingSection
-                }
-
-                TextField("名称", text: $name)
-
-                if item.type == .application {
-                    HStack {
-                        TextField("应用路径", text: $path)
-                        Button("选择...") {
-                            selectItemApplication()
+                    Form {
+                        Picker("层级", selection: $layer) {
+                            Text("上层（常用）").tag(PanelLayer.upper)
+                            Text("下层").tag(PanelLayer.lower)
                         }
-                    }
-                } else {
-                    VStack(alignment: .leading, spacing: 8) {
-                        TextField("网址", text: $path)
-                            .textContentType(.URL)
+                        .pickerStyle(.segmented)
 
-                        HStack {
-                            if let icon = customIcon {
-                                Image(nsImage: icon)
-                                    .resizable()
-                                    .frame(width: 32, height: 32)
-                            }
+                        if layer == .lower {
+                            lowerLayerBindingSection
+                        }
 
-                            VStack(alignment: .leading, spacing: 4) {
-                                Button(isFetchingIcon ? "获取中..." : "自动获取图标") {
-                                    fetchWebsiteIcon()
-                                }
-                                .disabled(path.isEmpty || isFetchingIcon)
+                        TextField("名称", text: $name)
 
-                                Button("选择本地图标...") {
-                                    selectImageFile()
+                        if item.type == .application {
+                            HStack(spacing: 10) {
+                                TextField("应用路径", text: $path)
+                                Button("选择...") {
+                                    selectItemApplication()
                                 }
                             }
+                        } else {
+                            VStack(alignment: .leading, spacing: 12) {
+                                TextField("网址", text: $path)
+                                    .textContentType(.URL)
 
-                            if customIcon != nil {
-                                Button("清除图标") {
-                                    customIcon = nil
-                                }
+                                WebsiteIconEditor(
+                                    icon: customIcon,
+                                    isFetchingIcon: isFetchingIcon,
+                                    hasURL: !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                                    onFetchIcon: fetchWebsiteIcon,
+                                    onSelectLocalIcon: selectImageFile,
+                                    onClearIcon: {
+                                        customIcon = nil
+                                    }
+                                )
                             }
                         }
                     }
-                }
-            }
-            .padding()
 
-            if let validationMessage {
-                Text(validationMessage)
-                    .font(.system(size: 12))
-                    .foregroundColor(.red)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal)
+                    if let validationMessage {
+                        InlineValidationMessage(message: validationMessage)
+                    }
+                }
+                .padding(20)
             }
+
+            Divider()
 
             HStack {
                 Button("取消") {
@@ -498,9 +482,11 @@ struct EditItemView: View {
                 .keyboardShortcut(.defaultAction)
                 .disabled(!canSave)
             }
-            .padding()
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
+            .background(Color(NSColor.windowBackgroundColor))
         }
-        .frame(width: 520, height: formHeight)
+        .frame(minWidth: 560, minHeight: 380)
         .onAppear {
             initializeForm()
         }
@@ -525,38 +511,15 @@ struct EditItemView: View {
         return true
     }
 
-    private var formHeight: CGFloat {
-        let baseHeight: CGFloat = item.type == .website ? 330 : 280
-        return layer == .lower ? baseHeight + 90 : baseHeight
-    }
-
-    @ViewBuilder
     private var lowerLayerBindingSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("绑定应用")
-                        .font(.system(size: 12, weight: .medium))
-
-                    Text(selectedAppName ?? itemBindingDisplayName)
-                        .font(.system(size: 11))
-                        .foregroundColor(selectedAppBundleId == nil ? .secondary : .primary)
-                }
-
-                Spacer()
-
-                Button("选择应用...") {
-                    selectBindingApplication()
-                }
-
-                if selectedAppBundleId != nil {
-                    Button("清除") {
-                        selectedAppBundleId = nil
-                        selectedAppName = nil
-                    }
-                    .foregroundColor(.red)
-                }
-            }
+        VStack(alignment: .leading, spacing: 12) {
+            AppBindingSummaryCard(
+                appName: selectedAppName ?? itemBindingDisplayName,
+                bundleIdentifier: selectedAppBundleId,
+                icon: selectedBindingAppIcon,
+                selectAction: selectBindingApplication,
+                clearAction: editBindingClearAction
+            )
 
             if selectedAppBundleId == nil {
                 Text("下层项目必须绑定一个目标应用，否则主面板不会显示。")
@@ -568,6 +531,21 @@ struct EditItemView: View {
 
     private var itemBindingDisplayName: String {
         selectedAppName ?? item.appBundleIdentifier ?? "未选择"
+    }
+
+    private var selectedBindingAppIcon: NSImage? {
+        guard let selectedAppBundleId,
+              let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: selectedAppBundleId) else {
+            return nil
+        }
+        return NSWorkspace.shared.icon(forFile: appURL.path)
+    }
+
+    private var editBindingClearAction: (() -> Void)? {
+        if selectedAppBundleId != nil {
+            return clearSelectedBinding
+        }
+        return nil
     }
 
     private func initializeForm() {
@@ -588,6 +566,9 @@ struct EditItemView: View {
 
         if panel.runModal() == .OK, let url = panel.url {
             path = url.path
+            if name == item.name || name.isEmpty {
+                name = url.deletingPathExtension().lastPathComponent
+            }
         }
     }
 
@@ -604,6 +585,11 @@ struct EditItemView: View {
             selectedAppBundleId = bundle?.bundleIdentifier
             selectedAppName = url.deletingPathExtension().lastPathComponent
         }
+    }
+
+    private func clearSelectedBinding() {
+        selectedAppBundleId = nil
+        selectedAppName = nil
     }
 
     private func selectImageFile() {
@@ -705,4 +691,145 @@ private func isValidApplicationPath(_ path: String) -> Bool {
     var isDirectory: ObjCBool = false
     let exists = FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory)
     return exists && isDirectory.boolValue && path.lowercased().hasSuffix(".app")
+}
+
+private struct InlineValidationMessage: View {
+    let message: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.circle.fill")
+                .foregroundColor(.red)
+            Text(message)
+                .font(.system(size: 12))
+                .foregroundColor(.red)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct WebsiteIconEditor: View {
+    let icon: NSImage?
+    let isFetchingIcon: Bool
+    let hasURL: Bool
+    let onFetchIcon: () -> Void
+    let onSelectLocalIcon: () -> Void
+    let onClearIcon: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Group {
+                if let icon {
+                    Image(nsImage: icon)
+                        .resizable()
+                        .interpolation(.high)
+                } else {
+                    Image(systemName: "globe")
+                        .resizable()
+                        .scaledToFit()
+                        .foregroundColor(.secondary)
+                        .padding(10)
+                }
+            }
+            .frame(width: 44, height: 44)
+            .background(Color.secondary.opacity(0.08))
+            .cornerRadius(10)
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    Button(isFetchingIcon ? "获取中..." : "自动获取图标") {
+                        onFetchIcon()
+                    }
+                    .disabled(!hasURL || isFetchingIcon)
+
+                    Button("选择本地图标...") {
+                        onSelectLocalIcon()
+                    }
+                }
+
+                HStack(spacing: 8) {
+                    if icon != nil {
+                        Button("清除图标") {
+                            onClearIcon()
+                        }
+                        .foregroundColor(.red)
+                    }
+
+                    Text(icon == nil ? "可留空，系统会使用默认图标" : "当前将使用自定义图标")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .background(Color.secondary.opacity(0.05))
+        .cornerRadius(12)
+    }
+}
+
+private struct AppBindingSummaryCard: View {
+    let appName: String?
+    let bundleIdentifier: String?
+    let icon: NSImage?
+    let selectAction: () -> Void
+    let clearAction: (() -> Void)?
+
+    private var subtitleText: String {
+        if let bundleIdentifier,
+           let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier) {
+            return appURL.path
+        }
+
+        return bundleIdentifier ?? "请选择要绑定的目标应用"
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Group {
+                if let icon {
+                    Image(nsImage: icon)
+                        .resizable()
+                        .interpolation(.high)
+                } else {
+                    Image(systemName: "app")
+                        .resizable()
+                        .scaledToFit()
+                        .foregroundColor(.secondary)
+                        .padding(8)
+                }
+            }
+            .frame(width: 40, height: 40)
+            .background(Color.secondary.opacity(0.08))
+            .cornerRadius(10)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(appName ?? "未选择")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(bundleIdentifier == nil ? .secondary : .primary)
+
+                Text(subtitleText)
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            Button("选择应用...") {
+                selectAction()
+            }
+
+            if let clearAction {
+                Button("清除") {
+                    clearAction()
+                }
+                .foregroundColor(.red)
+            }
+        }
+        .padding(12)
+        .background(Color.secondary.opacity(0.05))
+        .cornerRadius(12)
+    }
 }
