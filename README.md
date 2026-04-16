@@ -9,15 +9,27 @@ Quick Panel 是一个 macOS 快捷面板工具，定位为精简版 Quicker。�
 
 本文档已按当前代码状态更新，主要以源码实现为准，而不是历史开发记录。
 
+版本管理与发布规范见：[docs/release.md](/Users/benxin/Code/Quick%20Panel/docs/release.md)
+
+更新记录见：[CHANGELOG.md](/Users/benxin/Code/Quick%20Panel/CHANGELOG.md)
+
 ## 当前版本
 
-- App 版本：`1.2.0`
-- Build：`3`
+- App 版本：`1.2.1`
+- Build：`4`
 - Bundle ID：`com.benxin.Quick-Panel`
 - 部署目标：`macOS 26.2+`
 - 技术栈：`SwiftUI + AppKit`
 - 依赖情况：无第三方依赖，无 SPM / CocoaPods / Carthage
 - 测试情况：当前没有测试 target，仅支持手动验证
+
+## 版本管理
+
+- 对外版本号使用 `MARKETING_VERSION`
+- 构建号使用 `CURRENT_PROJECT_VERSION`
+- 当前项目实际配置位于 `Quick Panel/Quick Panel.xcodeproj/project.pbxproj`
+- 设置页、关于页、更新检查均从 `CFBundleShortVersionString` / `CFBundleVersion` 读取
+- 正式发布建议创建 Git Tag，格式为 `v<MARKETING_VERSION>`
 
 ## 当前已实现功能
 
