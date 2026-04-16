@@ -267,14 +267,19 @@ class PanelWindowManager {
         let width = settings.panelWidth
         let height = settings.layerHeight(for: .upper) + settings.layerHeight(for: .lower) + 44
 
-        // Hide panel before resizing if it's visible
-        let wasVisible = isVisible
-        if wasVisible {
-            hidePanel()
-        }
+        let currentFrame = window.frame
+        let center = CGPoint(x: currentFrame.midX, y: currentFrame.midY)
 
-        // Update window size
-        window.setContentSize(NSSize(width: width, height: height))
+        let newOrigin = CGPoint(
+            x: center.x - width / 2,
+            y: center.y - height / 2
+        )
+
+        window.setFrame(
+            NSRect(origin: newOrigin, size: NSSize(width: width, height: height)),
+            display: true,
+            animate: isVisible
+        )
 
         // Update window opacity
         window.alphaValue = settings.panelOpacity

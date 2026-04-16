@@ -38,7 +38,6 @@ struct PanelView: View {
     }
 
     var lowerItems: [PanelItem] {
-        // Filter by current app
         if let frontmostApp = currentFrontmostApp {
             let items = dataManager.getItemsForCurrentApp(bundleIdentifier: frontmostApp.bundleIdentifier)
             print("📱 Getting lower items for \(frontmostApp.appName) (\(frontmostApp.bundleIdentifier)): \(items.count) items")
@@ -58,6 +57,16 @@ struct PanelView: View {
 
     private var currentAppName: String {
         currentFrontmostApp?.appName ?? "当前应用"
+    }
+
+    private var lowerLayerEmptyMessage: String? {
+        guard lowerItems.isEmpty else { return nil }
+
+        if currentFrontmostApp == nil {
+            return "未识别到当前应用，可点击空位手动添加下层项目。"
+        }
+
+        return "当前应用暂无下层项目，可点击空位添加。"
     }
 
     var upperPageCount: Int {
@@ -84,7 +93,8 @@ struct PanelView: View {
                 currentAppBundleId: nil,
                 currentAppName: nil,
                 title: "常用功能",
-                columns: upperColumns
+                columns: upperColumns,
+                emptyMessage: nil
             )
 
             // Divider
@@ -101,7 +111,8 @@ struct PanelView: View {
                 currentAppBundleId: currentAppBundleId,
                 currentAppName: currentAppName,
                 title: currentAppName,
-                columns: lowerColumns
+                columns: lowerColumns,
+                emptyMessage: lowerLayerEmptyMessage
             )
             .id("\(currentAppBundleId ?? "none")-\(lowerItems.count)")
         }
@@ -126,6 +137,7 @@ struct LayerGridView: View {
     let currentAppName: String?
     let title: String
     let columns: [GridItem]
+    let emptyMessage: String?
 
     @ObservedObject private var dataManager = DataManager.shared
     @State private var showingGroupNameEditor = false
@@ -346,6 +358,15 @@ struct LayerGridView: View {
             .padding(.bottom, 16)
             .animation(.spring(response: 0.3, dampingFraction: 0.7), value: currentPageItems.map { $0.id })
 
+            if let emptyMessage, currentPageItems.isEmpty {
+                Text(emptyMessage)
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 4)
+            }
+
             if pageCount > 1 {
                 HStack(spacing: 6) {
                     ForEach(0..<pageCount, id: \.self) { index in
@@ -384,10 +405,16 @@ struct EmptySlotView: View {
                     style: StrokeStyle(lineWidth: 1, dash: [3, 3])
                 )
 
-            if isHovered {
+            VStack(spacing: 6) {
                 Image(systemName: "plus")
-                    .font(.system(size: 20))
-                    .foregroundColor(.secondary.opacity(0.6))
+                    .font(.system(size: isHovered ? 20 : 16, weight: .medium))
+                    .foregroundColor(.secondary.opacity(isHovered ? 0.6 : 0.35))
+
+                if isHovered {
+                    Text("添加")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary.opacity(0.7))
+                }
             }
         }
         .frame(width: 70, height: 90)
