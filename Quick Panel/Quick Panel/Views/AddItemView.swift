@@ -25,6 +25,7 @@ struct AddItemView: View {
     @State private var browserPath: String?
     @State private var customIcon: NSImage?
     @State private var isFetchingIcon = false
+    @State private var lastAutoFilledWebsiteName: String?
     @State private var bindToCurrentApp = false
     @State private var selectedAppBundleId: String?
     @State private var selectedAppName: String?
@@ -76,11 +77,7 @@ struct AddItemView: View {
                                 TextField("网址", text: $path)
                                     .textContentType(.URL)
                                     .onChange(of: path) { _, newValue in
-                                        if name.isEmpty,
-                                           let url = URLNormalizer.normalizedURL(from: newValue),
-                                           let host = url.host {
-                                            name = host
-                                        }
+                                        handleWebsiteURLChange(newValue)
                                     }
 
                                 WebsiteIconEditor(
@@ -298,14 +295,67 @@ struct AddItemView: View {
 
         print("🧭 Fetch website icon: \(normalizedPath)")
         isFetchingIcon = true
-        IconFetcher.shared.fetchFavicon(for: normalizedPath) { image in
-            if let image = image {
+        IconFetcher.shared.fetchWebsiteMetadata(for: normalizedPath) { metadata in
+            if let title = metadata.title {
+                applyAutoFilledWebsiteName(title, fallbackURL: normalizedURL)
+            }
+
+            if let image = metadata.icon {
                 print("✅ Website icon fetched (\(image.size.width)x\(image.size.height)) for \(normalizedPath)")
             } else {
                 print("⚠️ Website icon fetch returned nil for \(normalizedPath)")
             }
-            self.customIcon = image
+            self.customIcon = metadata.icon
             self.isFetchingIcon = false
+        }
+    }
+
+    private func handleWebsiteURLChange(_ newValue: String) {
+        guard let url = URLNormalizer.normalizedURL(from: newValue) else {
+            if name == lastAutoFilledWebsiteName {
+                name = ""
+            }
+            lastAutoFilledWebsiteName = nil
+            return
+        }
+
+        let fallbackName = url.host ?? ""
+        if name.isEmpty || name == lastAutoFilledWebsiteName {
+            name = fallbackName
+            lastAutoFilledWebsiteName = fallbackName
+        }
+
+        populateWebsiteTitleIfNeeded(for: url)
+    }
+
+    private func populateWebsiteTitleIfNeeded(for url: URL) {
+        let currentName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let shouldAutoFill = currentName.isEmpty || currentName == lastAutoFilledWebsiteName
+        guard shouldAutoFill else { return }
+
+        IconFetcher.shared.fetchWebsiteMetadata(for: url.absoluteString) { metadata in
+            guard itemType == .website else { return }
+            guard URLNormalizer.normalizedURL(from: path)?.absoluteString == url.absoluteString else { return }
+
+            if let title = metadata.title {
+                applyAutoFilledWebsiteName(title, fallbackURL: url)
+            }
+
+            if customIcon == nil, let icon = metadata.icon {
+                customIcon = icon
+            }
+        }
+    }
+
+    private func applyAutoFilledWebsiteName(_ proposedName: String, fallbackURL: URL) {
+        let trimmedName = proposedName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let fallbackName = fallbackURL.host ?? ""
+        let finalName = trimmedName.isEmpty ? fallbackName : trimmedName
+        guard !finalName.isEmpty else { return }
+
+        if name.isEmpty || name == lastAutoFilledWebsiteName || name == fallbackName {
+            name = finalName
+            lastAutoFilledWebsiteName = finalName
         }
     }
 
@@ -397,6 +447,7 @@ struct EditItemView: View {
     @State private var browserPath: String?
     @State private var customIcon: NSImage?
     @State private var isFetchingIcon = false
+    @State private var lastAutoFilledWebsiteName: String?
     @State private var selectedAppBundleId: String?
     @State private var selectedAppName: String?
     @State private var validationMessage: String?
@@ -444,6 +495,9 @@ struct EditItemView: View {
                             VStack(alignment: .leading, spacing: 12) {
                                 TextField("网址", text: $path)
                                     .textContentType(.URL)
+                                    .onChange(of: path) { _, newValue in
+                                        handleWebsiteURLChange(newValue)
+                                    }
 
                                 WebsiteIconEditor(
                                     icon: customIcon,
@@ -619,14 +673,67 @@ struct EditItemView: View {
 
         print("🧭 Fetch website icon (edit): \(normalizedPath)")
         isFetchingIcon = true
-        IconFetcher.shared.fetchFavicon(for: normalizedPath) { image in
-            if let image = image {
+        IconFetcher.shared.fetchWebsiteMetadata(for: normalizedPath) { metadata in
+            if let title = metadata.title {
+                applyAutoFilledWebsiteName(title, fallbackURL: normalizedURL)
+            }
+
+            if let image = metadata.icon {
                 print("✅ Website icon fetched (\(image.size.width)x\(image.size.height)) for \(normalizedPath)")
             } else {
                 print("⚠️ Website icon fetch returned nil for \(normalizedPath)")
             }
-            self.customIcon = image
+            self.customIcon = metadata.icon
             self.isFetchingIcon = false
+        }
+    }
+
+    private func handleWebsiteURLChange(_ newValue: String) {
+        guard let url = URLNormalizer.normalizedURL(from: newValue) else {
+            if name == lastAutoFilledWebsiteName {
+                name = ""
+            }
+            lastAutoFilledWebsiteName = nil
+            return
+        }
+
+        let fallbackName = url.host ?? ""
+        if name.isEmpty || name == lastAutoFilledWebsiteName {
+            name = fallbackName
+            lastAutoFilledWebsiteName = fallbackName
+        }
+
+        populateWebsiteTitleIfNeeded(for: url)
+    }
+
+    private func populateWebsiteTitleIfNeeded(for url: URL) {
+        let currentName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let shouldAutoFill = currentName.isEmpty || currentName == lastAutoFilledWebsiteName
+        guard shouldAutoFill else { return }
+
+        IconFetcher.shared.fetchWebsiteMetadata(for: url.absoluteString) { metadata in
+            guard item.type == .website else { return }
+            guard URLNormalizer.normalizedURL(from: path)?.absoluteString == url.absoluteString else { return }
+
+            if let title = metadata.title {
+                applyAutoFilledWebsiteName(title, fallbackURL: url)
+            }
+
+            if customIcon == nil, let icon = metadata.icon {
+                customIcon = icon
+            }
+        }
+    }
+
+    private func applyAutoFilledWebsiteName(_ proposedName: String, fallbackURL: URL) {
+        let trimmedName = proposedName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let fallbackName = fallbackURL.host ?? ""
+        let finalName = trimmedName.isEmpty ? fallbackName : trimmedName
+        guard !finalName.isEmpty else { return }
+
+        if name.isEmpty || name == lastAutoFilledWebsiteName || name == fallbackName {
+            name = finalName
+            lastAutoFilledWebsiteName = finalName
         }
     }
 

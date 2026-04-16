@@ -8,6 +8,11 @@
 import Foundation
 import AppKit
 
+struct WebsiteMetadata {
+    let title: String?
+    let icon: NSImage?
+}
+
 class IconFetcher {
     static let shared = IconFetcher()
 
@@ -17,70 +22,97 @@ class IconFetcher {
     // MARK: - Favicon Fetching
 
     func fetchFavicon(for urlString: String, completion: @escaping (NSImage?) -> Void) {
+        fetchWebsiteMetadata(for: urlString) { metadata in
+            completion(metadata.icon)
+        }
+    }
+
+    func fetchWebsiteMetadata(for urlString: String, completion: @escaping (WebsiteMetadata) -> Void) {
         print("🧩 fetchFavicon input: \(urlString)")
         guard let url = URLNormalizer.normalizedURL(from: urlString),
               let host = url.host,
               let scheme = url.scheme else {
             print("❌ URL normalization failed for: \(urlString)")
             DispatchQueue.main.async {
-                completion(nil)
+                completion(WebsiteMetadata(title: nil, icon: nil))
             }
             return
         }
 
         print("✅ Normalized URL: \(url.absoluteString)")
-        // Only try to fetch from the target website itself
-        // Try common favicon locations on the target site
-        let methods = [
-            "\(scheme)://\(host)/favicon.ico",
-            "\(scheme)://\(host)/favicon.png",
-            "\(scheme)://\(host)/apple-touch-icon.png",
-            "\(scheme)://\(host)/apple-touch-icon-precomposed.png"
-        ]
-
+        let directCandidates = self.defaultIconCandidates(for: host, scheme: scheme)
         print("🔍 Will try fetching favicon from target website only (no external services)")
-        print("🧪 Favicon candidate URLs: \(methods)")
-        fetchFaviconFromURLs(methods) { image in
-            if let image = image {
-                print("✅ Favicon loaded from direct URL list")
-                completion(image)
-                return
-            }
+        print("🧪 Direct favicon candidate URLs: \(directCandidates.map { $0.url.absoluteString })")
 
-            print("ℹ️ Direct favicon URLs failed, trying HTML parsing")
-            self.fetchFaviconLinksFromHTML(baseURL: url) { urls in
-                print("🔎 HTML icon links found: \(urls.map { $0.absoluteString })")
-                guard !urls.isEmpty else {
-                    DispatchQueue.main.async {
-                        completion(nil)
-                    }
-                    return
+        self.fetchWebsiteHTML(baseURL: url) { html in
+            let htmlTitle = html.flatMap { self.extractWebsiteTitle(from: $0) }
+            let htmlIconCandidates = html.map { self.extractIconCandidates(from: $0, baseURL: url) } ?? []
+            let iconCandidates = self.mergeIconCandidates(primary: htmlIconCandidates, fallback: directCandidates)
+
+            print("🔎 HTML icon links found: \(htmlIconCandidates.map { $0.url.absoluteString })")
+            self.fetchBestFavicon(from: iconCandidates) { image in
+                DispatchQueue.main.async {
+                    completion(WebsiteMetadata(title: htmlTitle, icon: image))
                 }
-
-                let urlStrings = urls.map { $0.absoluteString }
-                self.fetchFaviconFromURLs(urlStrings, completion: completion)
             }
         }
     }
 
-    private func fetchFaviconFromURLs(_ urls: [String], completion: @escaping (NSImage?) -> Void) {
-        guard !urls.isEmpty else {
-            print("⚠️ No more favicon URLs to try")
+    private struct IconCandidate {
+        let url: URL
+        let declaredSize: Int
+        let priority: Int
+    }
+
+    private func fetchBestFavicon(from candidates: [IconCandidate], completion: @escaping (NSImage?) -> Void) {
+        guard !candidates.isEmpty else {
+            print("⚠️ No favicon candidates to try")
             DispatchQueue.main.async {
                 completion(nil)
             }
             return
         }
 
-        let currentURL = urls[0]
-        let remainingURLs = Array(urls.dropFirst())
-
-        guard let url = URL(string: currentURL) else {
-            print("⚠️ Invalid favicon URL string: \(currentURL)")
-            fetchFaviconFromURLs(remainingURLs, completion: completion)
-            return
+        let sortedCandidates = candidates.sorted { lhs, rhs in
+            if lhs.priority != rhs.priority {
+                return lhs.priority > rhs.priority
+            }
+            if lhs.declaredSize != rhs.declaredSize {
+                return lhs.declaredSize > rhs.declaredSize
+            }
+            return lhs.url.absoluteString < rhs.url.absoluteString
         }
 
+        let dispatchGroup = DispatchGroup()
+        let queue = DispatchQueue(label: "IconFetcher.candidate-selection")
+        var bestImage: NSImage?
+        var bestScore = -1
+
+        for candidate in sortedCandidates {
+            dispatchGroup.enter()
+            fetchImage(at: candidate.url) { image in
+                defer { dispatchGroup.leave() }
+
+                guard let image else { return }
+
+                let pixelArea = image.bestPixelArea
+                let score = max(pixelArea, candidate.declaredSize * candidate.declaredSize)
+
+                queue.sync {
+                    if score > bestScore {
+                        bestScore = score
+                        bestImage = image
+                    }
+                }
+            }
+        }
+
+        dispatchGroup.notify(queue: .main) {
+            completion(bestImage)
+        }
+    }
+
+    private func fetchImage(at url: URL, completion: @escaping (NSImage?) -> Void) {
         print("🌐 Attempting to fetch favicon from: \(url.absoluteString)")
 
         var request = URLRequest(url: url)
@@ -92,41 +124,29 @@ class IconFetcher {
         URLSession.shared.dataTask(with: request) { data, response, error in
             if let error = error {
                 print("❌ Favicon fetch error for \(url.absoluteString): \(error.localizedDescription)")
-                // Try next URL
-                self.fetchFaviconFromURLs(remainingURLs, completion: completion)
+                completion(nil)
                 return
             }
 
             if let httpResponse = response as? HTTPURLResponse {
                 print("📡 HTTP Status: \(httpResponse.statusCode) for \(url.absoluteString)")
 
-                // Only accept successful status codes
                 guard (200...299).contains(httpResponse.statusCode) else {
-                    print("⚠️ Non-success status code, trying next URL")
-                    self.fetchFaviconFromURLs(remainingURLs, completion: completion)
+                    print("⚠️ Non-success status code for \(url.absoluteString)")
+                    completion(nil)
                     return
                 }
             }
 
-            if let data = data {
-                print("📦 Received \(data.count) bytes of data")
-
-                // Try to create image from data
-                if let image = self.createImageFromData(data, sourceURL: url.absoluteString) {
-                    print("✅ Successfully created image from: \(url.absoluteString)")
-                    DispatchQueue.main.async {
-                        completion(image)
-                    }
-                } else {
-                    print("⚠️ Failed to create image from data, trying next URL")
-                    // Try next URL
-                    self.fetchFaviconFromURLs(remainingURLs, completion: completion)
-                }
-            } else {
+            guard let data else {
                 print("⚠️ No data received from: \(url.absoluteString)")
-                // Try next URL
-                self.fetchFaviconFromURLs(remainingURLs, completion: completion)
+                completion(nil)
+                return
             }
+
+            print("📦 Received \(data.count) bytes of data")
+            let image = self.createImageFromData(data, sourceURL: url.absoluteString)
+            completion(image)
         }.resume()
     }
 
@@ -188,7 +208,7 @@ class IconFetcher {
 
     // MARK: - HTML Icon Parsing
 
-    private func fetchFaviconLinksFromHTML(baseURL: URL, completion: @escaping ([URL]) -> Void) {
+    private func fetchWebsiteHTML(baseURL: URL, completion: @escaping (String?) -> Void) {
         print("🌐 Fetching HTML for icon links: \(baseURL.absoluteString)")
         var request = URLRequest(url: baseURL)
         request.cachePolicy = .reloadIgnoringLocalCacheData
@@ -199,38 +219,37 @@ class IconFetcher {
         URLSession.shared.dataTask(with: request) { data, response, error in
             if let error = error {
                 print("❌ HTML fetch error for \(baseURL.absoluteString): \(error.localizedDescription)")
-                completion([])
+                completion(nil)
                 return
             }
 
             if let httpResponse = response as? HTTPURLResponse {
                 guard (200...299).contains(httpResponse.statusCode) else {
                     print("⚠️ HTML fetch status \(httpResponse.statusCode) for \(baseURL.absoluteString)")
-                    completion([])
+                    completion(nil)
                     return
                 }
             }
 
             guard let data = data else {
                 print("⚠️ HTML fetch returned no data for \(baseURL.absoluteString)")
-                completion([])
+                completion(nil)
                 return
             }
 
             let html = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1)
             guard let htmlString = html else {
                 print("⚠️ Failed to decode HTML for \(baseURL.absoluteString)")
-                completion([])
+                completion(nil)
                 return
             }
 
             print("📄 HTML length: \(htmlString.count) chars")
-            let urls = self.extractIconURLs(from: htmlString, baseURL: baseURL)
-            completion(urls)
+            completion(htmlString)
         }.resume()
     }
 
-    private func extractIconURLs(from html: String, baseURL: URL) -> [URL] {
+    private func extractIconCandidates(from html: String, baseURL: URL) -> [IconCandidate] {
         guard let linkRegex = try? NSRegularExpression(pattern: "(?i)<link\\b[^>]*>", options: []) else {
             print("⚠️ Failed to build link tag regex")
             return []
@@ -239,7 +258,7 @@ class IconFetcher {
         let nsHTML = html as NSString
         let matches = linkRegex.matches(in: html, options: [], range: NSRange(location: 0, length: nsHTML.length))
 
-        var results: [URL] = []
+        var results: [IconCandidate] = []
         var seen = Set<String>()
 
         for match in matches {
@@ -264,12 +283,137 @@ class IconFetcher {
             let key = resolvedURL.absoluteString
             if !seen.contains(key) {
                 seen.insert(key)
-                results.append(resolvedURL)
+                results.append(
+                    IconCandidate(
+                        url: resolvedURL,
+                        declaredSize: extractDeclaredIconSize(from: tag),
+                        priority: iconPriority(for: rel, url: resolvedURL)
+                    )
+                )
             }
         }
 
         print("🧾 Parsed \(results.count) icon URLs from HTML")
         return results
+    }
+
+    private func extractWebsiteTitle(from html: String) -> String? {
+        if let ogTitle = extractMetaContent(property: "og:title", from: html) {
+            return normalizedWebsiteTitle(ogTitle)
+        }
+
+        if let twitterTitle = extractMetaContent(property: "twitter:title", from: html) {
+            return normalizedWebsiteTitle(twitterTitle)
+        }
+
+        guard let titleRegex = try? NSRegularExpression(pattern: "(?is)<title[^>]*>(.*?)</title>", options: []) else {
+            return nil
+        }
+
+        let nsHTML = html as NSString
+        guard let match = titleRegex.firstMatch(in: html, options: [], range: NSRange(location: 0, length: nsHTML.length)),
+              match.numberOfRanges >= 2 else {
+            return nil
+        }
+
+        return normalizedWebsiteTitle(nsHTML.substring(with: match.range(at: 1)))
+    }
+
+    private func extractMetaContent(property: String, from html: String) -> String? {
+        let pattern = "(?is)<meta\\b[^>]*(?:property|name)\\s*=\\s*([\"'])\(NSRegularExpression.escapedPattern(for: property))\\1[^>]*content\\s*=\\s*([\"'])(.*?)\\2[^>]*>"
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
+            return nil
+        }
+
+        let nsHTML = html as NSString
+        guard let match = regex.firstMatch(in: html, options: [], range: NSRange(location: 0, length: nsHTML.length)),
+              match.numberOfRanges >= 4 else {
+            return nil
+        }
+
+        return normalizedWebsiteTitle(nsHTML.substring(with: match.range(at: 3)))
+    }
+
+    private func normalizedWebsiteTitle(_ rawTitle: String) -> String? {
+        let decoded = rawTitle
+            .replacingOccurrences(of: "&amp;", with: "&")
+            .replacingOccurrences(of: "&lt;", with: "<")
+            .replacingOccurrences(of: "&gt;", with: ">")
+            .replacingOccurrences(of: "&quot;", with: "\"")
+            .replacingOccurrences(of: "&#39;", with: "'")
+        let compact = decoded
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return compact.isEmpty ? nil : compact
+    }
+
+    private func defaultIconCandidates(for host: String, scheme: String) -> [IconCandidate] {
+        [
+            IconCandidate(url: URL(string: "\(scheme)://\(host)/apple-touch-icon.png")!, declaredSize: 180, priority: 1000),
+            IconCandidate(url: URL(string: "\(scheme)://\(host)/apple-touch-icon-precomposed.png")!, declaredSize: 180, priority: 990),
+            IconCandidate(url: URL(string: "\(scheme)://\(host)/favicon-196x196.png")!, declaredSize: 196, priority: 950),
+            IconCandidate(url: URL(string: "\(scheme)://\(host)/favicon-192x192.png")!, declaredSize: 192, priority: 940),
+            IconCandidate(url: URL(string: "\(scheme)://\(host)/favicon-96x96.png")!, declaredSize: 96, priority: 930),
+            IconCandidate(url: URL(string: "\(scheme)://\(host)/favicon-64x64.png")!, declaredSize: 64, priority: 920),
+            IconCandidate(url: URL(string: "\(scheme)://\(host)/favicon-32x32.png")!, declaredSize: 32, priority: 910),
+            IconCandidate(url: URL(string: "\(scheme)://\(host)/favicon.png")!, declaredSize: 32, priority: 900),
+            IconCandidate(url: URL(string: "\(scheme)://\(host)/favicon.ico")!, declaredSize: 32, priority: 890)
+        ]
+    }
+
+    private func mergeIconCandidates(primary: [IconCandidate], fallback: [IconCandidate]) -> [IconCandidate] {
+        var merged: [IconCandidate] = []
+        var seen = Set<String>()
+
+        for candidate in primary + fallback {
+            let key = candidate.url.absoluteString
+            guard !seen.contains(key) else { continue }
+            seen.insert(key)
+            merged.append(candidate)
+        }
+
+        return merged
+    }
+
+    private func extractDeclaredIconSize(from tag: String) -> Int {
+        guard let sizes = extractAttribute(named: "sizes", from: tag)?.lowercased() else {
+            return 0
+        }
+
+        if sizes == "any" {
+            return 1024
+        }
+
+        let values = sizes
+            .split(separator: " ")
+            .compactMap { token -> Int? in
+                let parts = token.split(separator: "x")
+                guard let first = parts.first, let value = Int(first) else { return nil }
+                return value
+            }
+
+        return values.max() ?? 0
+    }
+
+    private func iconPriority(for rel: String, url: URL) -> Int {
+        let urlString = url.absoluteString.lowercased()
+
+        if rel.contains("apple-touch-icon") {
+            return 1200
+        }
+        if rel.contains("mask-icon") {
+            return 1100
+        }
+        if rel.contains("fluid-icon") {
+            return 1050
+        }
+        if urlString.hasSuffix(".svg") {
+            return 1025
+        }
+        if rel.contains("shortcut icon") {
+            return 980
+        }
+        return 960
     }
 
     private func extractAttribute(named name: String, from tag: String) -> String? {
@@ -308,6 +452,18 @@ class IconFetcher {
 extension NSImage {
     var isValid: Bool {
         return self.size.width > 0 && self.size.height > 0
+    }
+
+    var bestPixelArea: Int {
+        let maxRepresentation = representations.max { lhs, rhs in
+            lhs.pixelsWide * lhs.pixelsHigh < rhs.pixelsWide * rhs.pixelsHigh
+        }
+
+        if let maxRepresentation {
+            return maxRepresentation.pixelsWide * maxRepresentation.pixelsHigh
+        }
+
+        return Int(size.width * size.height)
     }
 }
 
