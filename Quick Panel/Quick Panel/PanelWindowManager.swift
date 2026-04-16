@@ -46,10 +46,12 @@ class PanelWindowManager {
     private func setupPanelWindow() {
         // Prevent creating multiple windows
         if windowCreated {
+            AppLogger.debug("主面板窗口已创建，跳过重复初始化。", category: .panel)
             return
         }
 
         windowCreated = true
+        AppLogger.info("开始创建主面板窗口。", category: .panel)
 
         let panelView = PanelView()
         let hostingController = NSHostingController(rootView: panelView)
@@ -178,8 +180,10 @@ class PanelWindowManager {
 
     func togglePanel(at location: CGPoint) {
         if isVisible {
+            AppLogger.debug("切换主面板：执行隐藏。", category: .panel)
             hidePanel()
         } else {
+            AppLogger.debug("切换主面板：执行显示。", category: .panel)
             ContextDetector.shared.refreshCurrentApp()
             showPanel(at: location)
         }
@@ -188,6 +192,7 @@ class PanelWindowManager {
     func showPanel(at location: CGPoint) {
         // If already visible, don't show again
         if isVisible {
+            AppLogger.debug("主面板已显示，忽略重复 show 请求。", category: .panel)
             return
         }
 
@@ -197,6 +202,7 @@ class PanelWindowManager {
         }
 
         guard let window = panelWindow else {
+            AppLogger.error("主面板窗口为空，无法显示。", category: .panel)
             return
         }
 
@@ -236,19 +242,18 @@ class PanelWindowManager {
         // window.makeKey()
 
         isVisible = true
+        AppLogger.info("主面板已显示，位置=(\(Int(origin.x)), \(Int(origin.y)))。", category: .panel)
     }
 
     func hidePanel() {
         panelWindow?.orderOut(nil)
         isVisible = false
-
-        // Debug: print all windows
-        for (index, window) in NSApplication.shared.windows.enumerated() {
-        }
+        AppLogger.debug("主面板已隐藏。", category: .panel)
     }
 
     private func applySettings() {
         guard let window = panelWindow else {
+            AppLogger.debug("主面板窗口未创建，跳过设置应用。", category: .panel)
             return
         }
 
@@ -274,7 +279,7 @@ class PanelWindowManager {
 
         // Update window opacity
         window.alphaValue = settings.panelOpacity
-
+        AppLogger.info("主面板设置已应用：\(Int(width))x\(Int(height))，透明度=\(Int(settings.panelOpacity * 100))%。", category: .panel)
     }
 
     private func screenContaining(point: CGPoint) -> NSScreen? {

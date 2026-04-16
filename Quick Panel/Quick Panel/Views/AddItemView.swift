@@ -30,6 +30,7 @@ struct AddItemView: View {
     @State private var selectedAppBundleId: String?
     @State private var selectedAppName: String?
     @State private var validationMessage: String?
+    private let logCategory: AppLogCategory = .addItem
 
     init(presetLayer: PanelLayer = .upper, presetAppBundleId: String? = nil, presetAppName: String? = nil, targetPage: Int = 0) {
         self.presetLayer = presetLayer
@@ -286,6 +287,7 @@ struct AddItemView: View {
     private func fetchWebsiteIcon() {
         guard let normalizedURL = normalizedWebsiteURL() else {
             validationMessage = "请输入有效的网址，例如 https://example.com"
+            AppLogger.notice("网站图标抓取失败：URL 无效。", category: logCategory)
             return
         }
 
@@ -294,16 +296,14 @@ struct AddItemView: View {
         validationMessage = nil
 
         isFetchingIcon = true
+        AppLogger.debug("开始抓取网站元数据：\(normalizedPath)。", category: logCategory)
         IconFetcher.shared.fetchWebsiteMetadata(for: normalizedPath) { metadata in
             if let title = metadata.title {
                 applyAutoFilledWebsiteName(title, fallbackURL: normalizedURL)
             }
-
-            if let image = metadata.icon {
-            } else {
-            }
             self.customIcon = metadata.icon
             self.isFetchingIcon = false
+            AppLogger.info("网站元数据抓取完成：title=\(metadata.title ?? "nil")，icon=\(metadata.icon != nil ? "yes" : "no")。", category: logCategory)
         }
     }
 
@@ -390,7 +390,6 @@ struct AddItemView: View {
             targetOrder = pageEndOrder
         }
 
-
         let newItem = PanelItem(
             name: name,
             type: itemType,
@@ -403,6 +402,7 @@ struct AddItemView: View {
         )
 
         DataManager.shared.addItem(newItem)
+        AppLogger.notice("添加项目完成：name=\(name)，type=\(itemType.rawValue)，layer=\(layer.rawValue)。", category: logCategory)
 
         // Close the window
         AddItemWindowManager.shared.closeAddItemWindow()
@@ -447,6 +447,7 @@ struct EditItemView: View {
     @State private var selectedAppBundleId: String?
     @State private var selectedAppName: String?
     @State private var validationMessage: String?
+    private let logCategory: AppLogCategory = .addItem
 
     init(item: PanelItem) {
         self.item = item
@@ -660,6 +661,7 @@ struct EditItemView: View {
     private func fetchWebsiteIcon() {
         guard let normalizedURL = normalizedWebsiteURL() else {
             validationMessage = "请输入有效的网址，例如 https://example.com"
+            AppLogger.notice("编辑网站图标抓取失败：URL 无效。", category: logCategory)
             return
         }
 
@@ -668,16 +670,14 @@ struct EditItemView: View {
         validationMessage = nil
 
         isFetchingIcon = true
+        AppLogger.debug("开始抓取编辑网站元数据：\(normalizedPath)。", category: logCategory)
         IconFetcher.shared.fetchWebsiteMetadata(for: normalizedPath) { metadata in
             if let title = metadata.title {
                 applyAutoFilledWebsiteName(title, fallbackURL: normalizedURL)
             }
-
-            if let image = metadata.icon {
-            } else {
-            }
             self.customIcon = metadata.icon
             self.isFetchingIcon = false
+            AppLogger.info("编辑网站元数据抓取完成：title=\(metadata.title ?? "nil")，icon=\(metadata.icon != nil ? "yes" : "no")。", category: logCategory)
         }
     }
 
@@ -759,6 +759,7 @@ struct EditItemView: View {
         }
 
         DataManager.shared.updateItem(updatedItem)
+        AppLogger.notice("保存项目完成：name=\(updatedItem.name)，type=\(item.type.rawValue)，layer=\(layer.rawValue)。", category: logCategory)
         dismiss()
     }
 

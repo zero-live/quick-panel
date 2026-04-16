@@ -18,6 +18,7 @@ class IconFetcher {
 
     private init() {}
     private let userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
+    private let logCategory: AppLogCategory = .network
 
     // MARK: - Favicon Fetching
 
@@ -31,12 +32,14 @@ class IconFetcher {
         guard let url = URLNormalizer.normalizedURL(from: urlString),
               let host = url.host,
               let scheme = url.scheme else {
+            AppLogger.notice("网站元数据抓取失败：URL 无法规范化，input=\(urlString)。", category: logCategory)
             DispatchQueue.main.async {
                 completion(WebsiteMetadata(title: nil, icon: nil))
             }
             return
         }
 
+        AppLogger.debug("开始抓取网站元数据：\(url.absoluteString)。", category: logCategory)
         let directCandidates = self.defaultIconCandidates(for: host, scheme: scheme)
 
         self.fetchWebsiteHTML(baseURL: url) { html in
@@ -46,6 +49,7 @@ class IconFetcher {
 
             self.fetchBestFavicon(from: iconCandidates) { image in
                 DispatchQueue.main.async {
+                    AppLogger.info("网站元数据抓取完成：url=\(url.absoluteString)，title=\(htmlTitle ?? "nil")，icon=\(image != nil ? "yes" : "no")。", category: self.logCategory)
                     completion(WebsiteMetadata(title: htmlTitle, icon: image))
                 }
             }
@@ -60,6 +64,7 @@ class IconFetcher {
 
     private func fetchBestFavicon(from candidates: [IconCandidate], completion: @escaping (NSImage?) -> Void) {
         guard !candidates.isEmpty else {
+            AppLogger.notice("未找到可用的网站图标候选地址。", category: logCategory)
             DispatchQueue.main.async {
                 completion(nil)
             }
@@ -115,6 +120,7 @@ class IconFetcher {
 
         URLSession.shared.dataTask(with: request) { data, response, error in
             if let error = error {
+                AppLogger.debug("图标请求失败：\(url.absoluteString)，error=\(error.localizedDescription)。", category: self.logCategory)
                 completion(nil)
                 return
             }
@@ -122,6 +128,7 @@ class IconFetcher {
             if let httpResponse = response as? HTTPURLResponse {
 
                 guard (200...299).contains(httpResponse.statusCode) else {
+                    AppLogger.debug("图标请求返回非成功状态：\(url.absoluteString)，status=\(httpResponse.statusCode)。", category: self.logCategory)
                     completion(nil)
                     return
                 }
@@ -196,12 +203,14 @@ class IconFetcher {
 
         URLSession.shared.dataTask(with: request) { data, response, error in
             if let error = error {
+                AppLogger.debug("页面 HTML 请求失败：\(baseURL.absoluteString)，error=\(error.localizedDescription)。", category: self.logCategory)
                 completion(nil)
                 return
             }
 
             if let httpResponse = response as? HTTPURLResponse {
                 guard (200...299).contains(httpResponse.statusCode) else {
+                    AppLogger.debug("页面 HTML 返回非成功状态：\(baseURL.absoluteString)，status=\(httpResponse.statusCode)。", category: self.logCategory)
                     completion(nil)
                     return
                 }

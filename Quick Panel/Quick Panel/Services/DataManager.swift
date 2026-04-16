@@ -20,6 +20,7 @@ class DataManager: ObservableObject {
     private let groupsFile: URL
     private let pageCountsFile: URL
     private let unboundLowerScope = "__unbound__"
+    private let logCategory: AppLogCategory = .data
 
     private init() {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
@@ -33,13 +34,14 @@ class DataManager: ObservableObject {
         loadItems()
         loadPageGroups()
         loadPageCounts()
-
+        AppLogger.info("数据管理器初始化完成，当前项目数=\(items.count)。", category: logCategory)
     }
 
     // MARK: - Load/Save
 
     func loadItems() {
         guard FileManager.default.fileExists(atPath: configFile.path) else {
+            AppLogger.notice("配置文件不存在，将使用空数据启动。", category: logCategory)
             return
         }
 
@@ -48,6 +50,7 @@ class DataManager: ObservableObject {
             items = try JSONDecoder().decode([PanelItem].self, from: data)
             normalizeOrders(save: false)
         } catch {
+            AppLogger.error("读取项目配置失败：\(error.localizedDescription)", category: logCategory)
         }
     }
 
@@ -58,6 +61,7 @@ class DataManager: ObservableObject {
             let data = try encoder.encode(items)
             try data.write(to: configFile)
         } catch {
+            AppLogger.error("保存项目配置失败：\(error.localizedDescription)", category: logCategory)
         }
     }
 
@@ -67,6 +71,7 @@ class DataManager: ObservableObject {
         items.append(item)
         normalizeOrders(save: false)
         saveItems()
+        AppLogger.info("已添加项目：\(item.name)，layer=\(item.layer.rawValue)。", category: logCategory)
     }
 
     func updateItem(_ item: PanelItem) {
@@ -74,6 +79,7 @@ class DataManager: ObservableObject {
             items[index] = item
             normalizeOrders(save: false)
             saveItems()
+            AppLogger.info("已更新项目：\(item.name)，layer=\(item.layer.rawValue)。", category: logCategory)
         }
     }
 
@@ -81,6 +87,7 @@ class DataManager: ObservableObject {
         items.removeAll { $0.id == item.id }
         normalizeOrders(save: false)
         saveItems()
+        AppLogger.notice("已删除项目：\(item.name)。", category: logCategory)
     }
 
     func moveItem(from sourceIndex: Int, to destinationIndex: Int) {
@@ -93,6 +100,7 @@ class DataManager: ObservableObject {
         let item = items.remove(at: sourceIndex)
         items.insert(item, at: destinationIndex)
         saveItems()
+        AppLogger.debug("已移动项目顺序：from=\(sourceIndex), to=\(destinationIndex)。", category: logCategory)
     }
 
     func swapItems(layer: PanelLayer, appBundleIdentifier: String? = nil, fromIndex: Int, toIndex: Int) {
@@ -117,6 +125,7 @@ class DataManager: ObservableObject {
 
         normalizeOrders(save: false)
         saveItems()
+        AppLogger.debug("已交换项目顺序：layer=\(layer.rawValue)，from=\(fromIndex)，to=\(toIndex)。", category: logCategory)
     }
 
     // MARK: - Utility
@@ -145,6 +154,7 @@ class DataManager: ObservableObject {
     func clearAllItems() {
         items.removeAll()
         saveItems()
+        AppLogger.notice("已清空所有项目。", category: logCategory)
     }
 
     func legacyUnboundLowerItems() -> [PanelItem] {
@@ -174,12 +184,14 @@ class DataManager: ObservableObject {
 
         normalizeOrders(save: false)
         saveItems()
+        AppLogger.notice("已迁移未绑定下层项目到上层，数量=\(legacyItems.count)。", category: logCategory)
     }
 
     // MARK: - Page Groups
 
     func loadPageGroups() {
         guard FileManager.default.fileExists(atPath: groupsFile.path) else {
+            AppLogger.debug("分页分组文件不存在，跳过加载。", category: logCategory)
             return
         }
 
@@ -187,6 +199,7 @@ class DataManager: ObservableObject {
             let data = try Data(contentsOf: groupsFile)
             pageGroups = try JSONDecoder().decode(PageGroup.self, from: data)
         } catch {
+            AppLogger.error("读取分页分组失败：\(error.localizedDescription)", category: logCategory)
         }
     }
 
@@ -197,6 +210,7 @@ class DataManager: ObservableObject {
             let data = try encoder.encode(pageGroups)
             try data.write(to: groupsFile)
         } catch {
+            AppLogger.error("保存分页分组失败：\(error.localizedDescription)", category: logCategory)
         }
     }
 
@@ -217,12 +231,14 @@ class DataManager: ObservableObject {
 
     func loadPageCounts() {
         guard FileManager.default.fileExists(atPath: pageCountsFile.path) else {
+            AppLogger.debug("分页数量文件不存在，跳过加载。", category: logCategory)
             return
         }
         do {
             let data = try Data(contentsOf: pageCountsFile)
             pageCounts = try JSONDecoder().decode([String: Int].self, from: data)
         } catch {
+            AppLogger.error("读取分页数量失败：\(error.localizedDescription)", category: logCategory)
         }
     }
 
@@ -233,6 +249,7 @@ class DataManager: ObservableObject {
             let data = try encoder.encode(pageCounts)
             try data.write(to: pageCountsFile)
         } catch {
+            AppLogger.error("保存分页数量失败：\(error.localizedDescription)", category: logCategory)
         }
     }
 
@@ -286,6 +303,7 @@ class DataManager: ObservableObject {
         saveItems()
         savePageGroups()
         savePageCounts()
+        AppLogger.notice("已删除页面：layer=\(layer.rawValue)，page=\(page)。", category: logCategory)
     }
 
     // MARK: - Helpers

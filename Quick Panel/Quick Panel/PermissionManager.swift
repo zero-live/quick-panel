@@ -22,15 +22,18 @@ class PermissionManager {
     func requestAccessibilityPermission() {
         // Double check if we really don't have permission
         if checkAccessibilityPermission() {
+            AppLogger.debug("辅助功能权限已授权，跳过请求。", category: .permission)
             return
         }
 
+        AppLogger.notice("开始请求辅助功能权限。", category: .permission)
 
         // First, trigger the system prompt by calling with prompt option
         let options: NSDictionary = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
         let trusted = AXIsProcessTrustedWithOptions(options)
 
         if !trusted {
+            AppLogger.notice("系统未授予辅助功能权限，展示引导弹窗。", category: .permission)
             // Show custom alert with better instructions
             DispatchQueue.main.async {
                 let alert = NSAlert()
@@ -65,6 +68,7 @@ class PermissionManager {
     }
 
     func openAccessibilitySettings() {
+        AppLogger.info("打开辅助功能系统设置。", category: .permission)
         // Try multiple methods to open accessibility settings
 
         // Method 1: Direct URL scheme (works on macOS 13+)
@@ -86,6 +90,7 @@ class PermissionManager {
                 var error: NSDictionary?
                 appleScript.executeAndReturnError(&error)
                 if let error = error {
+                    AppLogger.error("通过 AppleScript 打开系统设置失败：\(error.description)", category: .permission)
                 }
             }
         }

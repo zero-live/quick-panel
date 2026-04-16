@@ -17,6 +17,7 @@ class ContextDetector: ObservableObject {
 
     private let ownBundleIdentifier = Bundle.main.bundleIdentifier
     private var lastExternalFrontmostAppInfo: FrontmostAppInfo?
+    private let logCategory: AppLogCategory = .app
 
     private init() {
         setupNotifications()
@@ -40,6 +41,7 @@ class ContextDetector: ObservableObject {
     private func updateCurrentApp() {
         guard let frontmostApp = NSWorkspace.shared.frontmostApplication,
               let bundleIdentifier = frontmostApp.bundleIdentifier else {
+            AppLogger.debug("未识别到当前前台应用。", category: logCategory)
             applyFrontmostApp(nil)
             return
         }
@@ -49,8 +51,10 @@ class ContextDetector: ObservableObject {
 
         if isOwnApplication(bundleIdentifier) {
             if let lastExternalFrontmostAppInfo {
+                AppLogger.debug("忽略 Quick Panel 自身激活，沿用外部应用：\(lastExternalFrontmostAppInfo.bundleIdentifier)。", category: logCategory)
                 applyFrontmostApp(lastExternalFrontmostAppInfo)
             } else {
+                AppLogger.debug("前台应用是 Quick Panel，且没有缓存的外部应用上下文。", category: logCategory)
                 applyFrontmostApp(nil)
             }
             return
@@ -77,6 +81,7 @@ class ContextDetector: ObservableObject {
             return
         }
 
+        AppLogger.debug("当前前台应用更新为：\(appInfo.bundleIdentifier)。", category: logCategory)
 
         if let preset = PresetConfiguration.shared.getPreset(for: appInfo.bundleIdentifier) {
             currentApp = preset
