@@ -74,6 +74,12 @@ struct AboutView: View {
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                 }
+
+                Button("查看更新日志") {
+                    ChangelogWindowManager.shared.showChangelog()
+                }
+                .buttonStyle(.borderless)
+                .controlSize(.small)
             }
 
             Spacer()

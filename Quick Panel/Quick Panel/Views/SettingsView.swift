@@ -1303,6 +1303,18 @@ struct AdvancedTab: View {
                     .tint(updateManager.hasUpdate ? .green : .blue)
                     .disabled(updateManager.isChecking)
                     .padding(.leading, 32)
+
+                    Button(action: {
+                        ChangelogWindowManager.shared.showChangelog()
+                    }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "clock.arrow.trianglehead.counterclockwise.rotate.90")
+                            Text("查看更新日志")
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderless)
+                    .padding(.leading, 32)
                 }
             }
             .padding(24)

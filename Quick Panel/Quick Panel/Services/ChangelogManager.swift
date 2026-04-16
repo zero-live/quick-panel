@@ -1,0 +1,107 @@
+//
+//  ChangelogManager.swift
+//  Quick Panel
+//
+//  Created by Codex on 2026/04/16.
+//
+
+import Foundation
+
+struct ChangelogSection: Identifiable {
+    let id = UUID()
+    let title: String
+    let items: [String]
+}
+
+struct ChangelogRelease: Identifiable {
+    let id = UUID()
+    let version: String
+    let build: String?
+    let status: String
+    let sections: [ChangelogSection]
+}
+
+class ChangelogManager {
+    static let shared = ChangelogManager()
+
+    private init() {}
+
+    let releases: [ChangelogRelease] = [
+        ChangelogRelease(
+            version: "1.2.1",
+            build: "4",
+            status: "当前版本",
+            sections: [
+                ChangelogSection(title: "新增", items: [
+                    "新增统一日志基础设施，并接入关键链路日志",
+                    "新增导出最近 24 小时日志能力",
+                    "新增打开日志目录入口",
+                    "新增本地日志按天分文件、保留最近 7 天的策略",
+                    "新增清空本地日志能力"
+                ]),
+                ChangelogSection(title: "优化", items: [
+                    "优化网站图标与网站标题自动获取",
+                    "优化添加项目窗口布局与绑定应用展示",
+                    "优化主界面标题栏、空状态提示与分组标题编辑交互",
+                    "优化管理页筛选、批量操作和交互细节",
+                    "优化设置页与管理页交互体验"
+                ]),
+                ChangelogSection(title: "修复", items: [
+                    "修复下层添加项目时前台应用识别不稳定的问题",
+                    "修复下层项目首次打开面板显示为空白的问题",
+                    "修复管理页中网站项目副标题未正确显示网址的问题",
+                    "修复调试日志导出在沙盒环境下失败的问题",
+                    "修复保存面板所需的文件读写权限配置"
+                ])
+            ]
+        ),
+        ChangelogRelease(
+            version: "1.2.0",
+            build: "3",
+            status: "已发布",
+            sections: [
+                ChangelogSection(title: "新增", items: [
+                    "新增应用内自动检查更新能力",
+                    "新增 DMG 安装包流程",
+                    "新增全局快捷键呼出面板能力",
+                    "新增分页、新建页面、删除页面与分页指示",
+                    "新增页面分组标题编辑能力"
+                ]),
+                ChangelogSection(title: "优化", items: [
+                    "调整项目结构，整理发布产物目录",
+                    "优化多实例检测与应用启动流程",
+                    "优化首次弹窗位置与前台应用识别时机"
+                ]),
+                ChangelogSection(title: "修复", items: [
+                    "修复快捷键触发后面板未正确显示的问题",
+                    "修复添加项目时新项目落入第一页的问题",
+                    "修复分页系统核心 bug 与滚轮跳页问题",
+                    "修复删除页面失败的问题"
+                ])
+            ]
+        ),
+        ChangelogRelease(
+            version: "1.0.1",
+            build: nil,
+            status: "已发布",
+            sections: [
+                ChangelogSection(title: "优化", items: [
+                    "继续稳定首个正式版本后的基础体验",
+                    "调整细节并补充发布修正"
+                ])
+            ]
+        ),
+        ChangelogRelease(
+            version: "1.0.0",
+            build: nil,
+            status: "首个正式版本",
+            sections: [
+                ChangelogSection(title: "首次发布", items: [
+                    "提供鼠标中键呼出快捷面板能力",
+                    "支持上层常用项目与下层按前台应用分组的项目",
+                    "支持启动应用、打开网站、拖拽排序、分页与基础设置"
+                ])
+            ]
+        )
+    ]
+}

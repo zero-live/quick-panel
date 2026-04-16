@@ -76,6 +76,14 @@ class StatusBarManager {
         aboutItem.target = self
         menu.addItem(aboutItem)
 
+        let changelogItem = NSMenuItem(
+            title: "更新日志",
+            action: #selector(showChangelog),
+            keyEquivalent: ""
+        )
+        changelogItem.target = self
+        menu.addItem(changelogItem)
+
         menu.addItem(NSMenuItem.separator())
 
         // Quit
@@ -104,6 +112,10 @@ class StatusBarManager {
 
     @objc private func showAbout() {
         AboutWindowManager.shared.showAbout()
+    }
+
+    @objc private func showChangelog() {
+        ChangelogWindowManager.shared.showChangelog()
     }
 
     @objc private func quit() {
