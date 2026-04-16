@@ -19,10 +19,16 @@ class AddItemWindowManager {
     func showAddItemWindow(layer: PanelLayer = .upper, appBundleId: String? = nil, appName: String? = nil, page: Int = 0) {
         addWindow?.close()
 
+        let resolvedBinding = resolvedBindingContext(
+            layer: layer,
+            appBundleId: appBundleId,
+            appName: appName
+        )
+
         let addView = AddItemView(
             presetLayer: layer,
-            presetAppBundleId: appBundleId,
-            presetAppName: appName,
+            presetAppBundleId: resolvedBinding.bundleIdentifier,
+            presetAppName: resolvedBinding.appName,
             targetPage: page
         )
         let hostingController = NSHostingController(rootView: addView)
@@ -96,5 +102,18 @@ class AddItemWindowManager {
     func closeEditItemWindow() {
         editWindow?.close()
         editWindow = nil
+    }
+
+    private func resolvedBindingContext(layer: PanelLayer, appBundleId: String?, appName: String?) -> (bundleIdentifier: String?, appName: String?) {
+        guard layer == .lower else {
+            return (appBundleId, appName)
+        }
+
+        if let appBundleId, let appName {
+            return (appBundleId, appName)
+        }
+
+        let currentApp = ContextDetector.shared.frontmostAppInfo
+        return (appBundleId ?? currentApp?.bundleIdentifier, appName ?? currentApp?.appName)
     }
 }

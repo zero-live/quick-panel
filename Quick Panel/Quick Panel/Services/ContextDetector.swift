@@ -15,6 +15,9 @@ class ContextDetector: ObservableObject {
     @Published var currentActions: [ContextAction] = []
     @Published var frontmostAppInfo: FrontmostAppInfo?
 
+    private let ownBundleIdentifier = Bundle.main.bundleIdentifier
+    private var lastExternalFrontmostAppInfo: FrontmostAppInfo?
+
     private init() {
         setupNotifications()
         updateCurrentApp()
@@ -39,30 +42,56 @@ class ContextDetector: ObservableObject {
         guard let frontmostApp = NSWorkspace.shared.frontmostApplication,
               let bundleIdentifier = frontmostApp.bundleIdentifier else {
             print("⚠️ No frontmost application found")
-            frontmostAppInfo = nil
+            applyFrontmostApp(nil)
+            return
+        }
+
+        let appName = frontmostApp.localizedName ?? "当前应用"
+        let appInfo = FrontmostAppInfo(bundleIdentifier: bundleIdentifier, appName: appName)
+
+        if isOwnApplication(bundleIdentifier) {
+            if let lastExternalFrontmostAppInfo {
+                print("↩️ Ignoring self app activation, keep context: \(lastExternalFrontmostAppInfo.appName) (\(lastExternalFrontmostAppInfo.bundleIdentifier))")
+                applyFrontmostApp(lastExternalFrontmostAppInfo)
+            } else {
+                print("⚠️ Frontmost app is Quick Panel and no external context is cached")
+                applyFrontmostApp(nil)
+            }
+            return
+        }
+
+        lastExternalFrontmostAppInfo = appInfo
+        applyFrontmostApp(appInfo)
+    }
+
+    func refreshCurrentApp() {
+        updateCurrentApp()
+    }
+
+    private func isOwnApplication(_ bundleIdentifier: String) -> Bool {
+        bundleIdentifier == ownBundleIdentifier
+    }
+
+    private func applyFrontmostApp(_ appInfo: FrontmostAppInfo?) {
+        frontmostAppInfo = appInfo
+
+        guard let appInfo else {
             currentApp = nil
             currentActions = []
             return
         }
 
-        let appName = frontmostApp.localizedName ?? "当前应用"
-        frontmostAppInfo = FrontmostAppInfo(bundleIdentifier: bundleIdentifier, appName: appName)
-        print("👀 Current app: \(appName) (\(bundleIdentifier))")
+        print("👀 Current app: \(appInfo.appName) (\(appInfo.bundleIdentifier))")
 
-        // Check if we have a preset for this app
-        if let preset = PresetConfiguration.shared.getPreset(for: bundleIdentifier) {
+        if let preset = PresetConfiguration.shared.getPreset(for: appInfo.bundleIdentifier) {
             print("✅ Found preset for \(preset.appName)")
             currentApp = preset
             currentActions = preset.actions
         } else {
-            print("ℹ️ No preset found for \(bundleIdentifier)")
+            print("ℹ️ No preset found for \(appInfo.bundleIdentifier)")
             currentApp = nil
             currentActions = []
         }
-    }
-
-    func refreshCurrentApp() {
-        updateCurrentApp()
     }
 }
 

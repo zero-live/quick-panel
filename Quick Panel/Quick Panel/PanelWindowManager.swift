@@ -183,6 +183,7 @@ class PanelWindowManager {
         if isVisible {
             hidePanel()
         } else {
+            ContextDetector.shared.refreshCurrentApp()
             showPanel(at: location)
         }
     }
