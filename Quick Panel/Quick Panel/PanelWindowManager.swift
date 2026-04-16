@@ -15,6 +15,9 @@ class PanelWindowManager {
     private var isVisible = false
     private var windowCreated = false
     private var lastScrollTime: TimeInterval = 0
+    private var dragMonitor: Any?
+    private var clickOutsideMonitor: Any?
+    private var scrollWheelMonitor: Any?
 
     private init() {
         setupNotifications()
@@ -93,8 +96,13 @@ class PanelWindowManager {
     }
 
     private func setupDragHandler(for window: NSWindow) {
+        if let dragMonitor {
+            NSEvent.removeMonitor(dragMonitor)
+            self.dragMonitor = nil
+        }
+
         // Monitor for mouse events to enable dragging from drag handle area
-        NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .leftMouseDragged]) { [weak window] event in
+        dragMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .leftMouseDragged]) { [weak window] event in
             guard let window = window, event.window == window else { return event }
 
             let locationInWindow = event.locationInWindow
@@ -111,7 +119,12 @@ class PanelWindowManager {
     }
 
     private func setupClickOutsideHandler(for window: NSWindow) {
-        NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+        if let clickOutsideMonitor {
+            NSEvent.removeMonitor(clickOutsideMonitor)
+            self.clickOutsideMonitor = nil
+        }
+
+        clickOutsideMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
             guard let self = self, let panelWindow = self.panelWindow else { return }
 
             if self.isVisible {
@@ -127,7 +140,12 @@ class PanelWindowManager {
     }
 
     private func setupScrollWheelHandler(for window: NSWindow) {
-        NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel]) { [weak self, weak window] event in
+        if let scrollWheelMonitor {
+            NSEvent.removeMonitor(scrollWheelMonitor)
+            self.scrollWheelMonitor = nil
+        }
+
+        scrollWheelMonitor = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel]) { [weak self, weak window] event in
             guard let self = self, let window = window, event.window == window else { return event }
 
             let now = ProcessInfo.processInfo.systemUptime
@@ -268,6 +286,18 @@ class PanelWindowManager {
         return NSScreen.screens.first { screen in
             screen.frame.contains(point)
         } ?? NSScreen.main
+    }
+
+    deinit {
+        if let dragMonitor {
+            NSEvent.removeMonitor(dragMonitor)
+        }
+        if let clickOutsideMonitor {
+            NSEvent.removeMonitor(clickOutsideMonitor)
+        }
+        if let scrollWheelMonitor {
+            NSEvent.removeMonitor(scrollWheelMonitor)
+        }
     }
 }
 

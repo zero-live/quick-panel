@@ -155,6 +155,36 @@ class DataManager: ObservableObject {
         print("🗑️ Cleared all items")
     }
 
+    func legacyUnboundLowerItems() -> [PanelItem] {
+        items.filter { item in
+            guard item.layer == .lower else { return false }
+            guard let bundleIdentifier = item.appBundleIdentifier?.trimmingCharacters(in: .whitespacesAndNewlines) else {
+                return true
+            }
+            return bundleIdentifier.isEmpty
+        }
+        .sorted { $0.order < $1.order }
+    }
+
+    func migrateLegacyUnboundLowerItemsToUpper() {
+        let legacyItems = legacyUnboundLowerItems()
+        guard !legacyItems.isEmpty else { return }
+
+        var nextUpperOrder = (getItems(for: .upper).map(\.order).max() ?? -1) + 1
+
+        for legacyItem in legacyItems {
+            guard let index = items.firstIndex(where: { $0.id == legacyItem.id }) else { continue }
+            items[index].layer = .upper
+            items[index].appBundleIdentifier = nil
+            items[index].order = nextUpperOrder
+            nextUpperOrder += 1
+        }
+
+        normalizeOrders(save: false)
+        saveItems()
+        print("🔄 Migrated \(legacyItems.count) legacy unbound lower items to upper layer")
+    }
+
     // MARK: - Page Groups
 
     func loadPageGroups() {

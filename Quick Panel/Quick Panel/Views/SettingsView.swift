@@ -378,6 +378,7 @@ struct ItemManagementTab: View {
     @ObservedObject var contextDetector = ContextDetector.shared
     @State private var pendingDeleteItem: PanelItem?
     @State private var showingBatchDeleteAlert = false
+    @State private var showingLegacyMigrationAlert = false
     @State private var searchText = ""
     @State private var selectedFilter: ItemManagementFilter = .all
     @State private var expandedLowerGroups: Set<String> = []
@@ -440,6 +441,10 @@ struct ItemManagementTab: View {
         selectedFilter != .all || !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    var legacyUnboundLowerItems: [PanelItem] {
+        filteredItems(dataManager.legacyUnboundLowerItems())
+    }
+
     var visibleItemIDs: Set<UUID> {
         Set(visibleItems.map(\.id))
     }
@@ -451,6 +456,10 @@ struct ItemManagementTab: View {
     var body: some View {
         VStack(spacing: 0) {
             VStack(spacing: 12) {
+                if !legacyUnboundLowerItems.isEmpty {
+                    legacyDataBanner
+                }
+
                 HStack {
                     HStack(spacing: 6) {
                         Image(systemName: "square.grid.3x3")
@@ -695,6 +704,14 @@ struct ItemManagementTab: View {
         } message: {
             Text("将删除已选择的 \(selectedItemIDs.count) 个项目。此操作不可撤销。")
         }
+        .alert("迁移遗留项目", isPresented: $showingLegacyMigrationAlert) {
+            Button("取消", role: .cancel) {}
+            Button("迁移到常用", role: .none) {
+                dataManager.migrateLegacyUnboundLowerItemsToUpper()
+            }
+        } message: {
+            Text("这些未绑定应用的下层项目不会在主面板显示。迁移后会保留项目内容，并移动到常用功能中。")
+        }
         .onAppear {
             syncExpandedGroups()
         }
@@ -724,6 +741,37 @@ struct ItemManagementTab: View {
 
     private var visibleItems: [PanelItem] {
         upperItems + lowerItemGroups.flatMap(\.items)
+    }
+
+    private var legacyDataBanner: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundColor(.orange)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("发现 \(legacyUnboundLowerItems.count) 个未绑定应用的下层项目")
+                    .font(.system(size: 12, weight: .medium))
+                Text("这类旧数据不会在主面板显示，建议迁移到常用功能或重新绑定应用。")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            }
+
+            Spacer()
+
+            Button("迁移到常用") {
+                showingLegacyMigrationAlert = true
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Color.orange.opacity(0.08))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.orange.opacity(0.18), lineWidth: 1)
+        )
+        .cornerRadius(10)
     }
 
     private func toggleSelectionMode() {

@@ -28,6 +28,7 @@ struct AddItemView: View {
     @State private var bindToCurrentApp = false
     @State private var selectedAppBundleId: String?
     @State private var selectedAppName: String?
+    @State private var validationMessage: String?
 
     init(presetLayer: PanelLayer = .upper, presetAppBundleId: String? = nil, presetAppName: String? = nil, targetPage: Int = 0) {
         self.presetLayer = presetLayer
@@ -109,6 +110,14 @@ struct AddItemView: View {
                 }
             }
             .padding()
+
+            if let validationMessage {
+                Text(validationMessage)
+                    .font(.system(size: 12))
+                    .foregroundColor(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal)
+            }
 
             HStack {
                 Button("取消") {
@@ -282,15 +291,22 @@ struct AddItemView: View {
     }
 
     private func fetchWebsiteIcon() {
-        guard !path.isEmpty else { return }
+        guard let normalizedURL = normalizedWebsiteURL() else {
+            validationMessage = "请输入有效的网址，例如 https://example.com"
+            return
+        }
 
-        print("🧭 Fetch website icon: \(path)")
+        let normalizedPath = normalizedURL.absoluteString
+        path = normalizedPath
+        validationMessage = nil
+
+        print("🧭 Fetch website icon: \(normalizedPath)")
         isFetchingIcon = true
-        IconFetcher.shared.fetchFavicon(for: path) { image in
+        IconFetcher.shared.fetchFavicon(for: normalizedPath) { image in
             if let image = image {
-                print("✅ Website icon fetched (\(image.size.width)x\(image.size.height)) for \(path)")
+                print("✅ Website icon fetched (\(image.size.width)x\(image.size.height)) for \(normalizedPath)")
             } else {
-                print("⚠️ Website icon fetch returned nil for \(path)")
+                print("⚠️ Website icon fetch returned nil for \(normalizedPath)")
             }
             self.customIcon = image
             self.isFetchingIcon = false
@@ -298,6 +314,12 @@ struct AddItemView: View {
     }
 
     private func addItem() {
+        validationMessage = nil
+
+        guard let validatedPath = validatedItemPath() else {
+            return
+        }
+
         var iconData: Data?
         if let icon = customIcon, let tiffData = icon.tiffRepresentation {
             iconData = tiffData
@@ -330,7 +352,7 @@ struct AddItemView: View {
         let newItem = PanelItem(
             name: name,
             type: itemType,
-            path: path,
+            path: validatedPath,
             iconData: iconData,
             browserPath: browserPath,
             layer: layer,
@@ -344,6 +366,28 @@ struct AddItemView: View {
         AddItemWindowManager.shared.closeAddItemWindow()
         onDismiss?()
         dismiss()
+    }
+
+    private func validatedItemPath() -> String? {
+        switch itemType {
+        case .application:
+            let trimmedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard isValidApplicationPath(trimmedPath) else {
+                validationMessage = "请选择有效的应用程序路径。"
+                return nil
+            }
+            return trimmedPath
+        case .website:
+            guard let normalizedURL = normalizedWebsiteURL() else {
+                validationMessage = "请输入有效的网址，例如 https://example.com"
+                return nil
+            }
+            return normalizedURL.absoluteString
+        }
+    }
+
+    private func normalizedWebsiteURL() -> URL? {
+        URLNormalizer.normalizedURL(from: path)
     }
 }
 
@@ -359,6 +403,7 @@ struct EditItemView: View {
     @State private var isFetchingIcon = false
     @State private var selectedAppBundleId: String?
     @State private var selectedAppName: String?
+    @State private var validationMessage: String?
 
     init(item: PanelItem) {
         self.item = item
@@ -430,6 +475,14 @@ struct EditItemView: View {
                 }
             }
             .padding()
+
+            if let validationMessage {
+                Text(validationMessage)
+                    .font(.system(size: 12))
+                    .foregroundColor(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal)
+            }
 
             HStack {
                 Button("取消") {
@@ -569,15 +622,22 @@ struct EditItemView: View {
     }
 
     private func fetchWebsiteIcon() {
-        guard !path.isEmpty else { return }
+        guard let normalizedURL = normalizedWebsiteURL() else {
+            validationMessage = "请输入有效的网址，例如 https://example.com"
+            return
+        }
 
-        print("🧭 Fetch website icon (edit): \(path)")
+        let normalizedPath = normalizedURL.absoluteString
+        path = normalizedPath
+        validationMessage = nil
+
+        print("🧭 Fetch website icon (edit): \(normalizedPath)")
         isFetchingIcon = true
-        IconFetcher.shared.fetchFavicon(for: path) { image in
+        IconFetcher.shared.fetchFavicon(for: normalizedPath) { image in
             if let image = image {
-                print("✅ Website icon fetched (\(image.size.width)x\(image.size.height)) for \(path)")
+                print("✅ Website icon fetched (\(image.size.width)x\(image.size.height)) for \(normalizedPath)")
             } else {
-                print("⚠️ Website icon fetch returned nil for \(path)")
+                print("⚠️ Website icon fetch returned nil for \(normalizedPath)")
             }
             self.customIcon = image
             self.isFetchingIcon = false
@@ -585,6 +645,12 @@ struct EditItemView: View {
     }
 
     private func saveItem() {
+        validationMessage = nil
+
+        guard let validatedPath = validatedItemPath() else {
+            return
+        }
+
         var iconData: Data?
         if let icon = customIcon, let tiffData = icon.tiffRepresentation {
             iconData = tiffData
@@ -593,7 +659,7 @@ struct EditItemView: View {
         var updatedItem = item
         updatedItem.name = name
         updatedItem.layer = layer
-        updatedItem.path = path
+        updatedItem.path = validatedPath
         updatedItem.browserPath = browserPath
         updatedItem.iconData = iconData
         updatedItem.appBundleIdentifier = layer == .lower ? selectedAppBundleId : nil
@@ -609,4 +675,34 @@ struct EditItemView: View {
         DataManager.shared.updateItem(updatedItem)
         dismiss()
     }
+
+    private func validatedItemPath() -> String? {
+        switch item.type {
+        case .application:
+            let trimmedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard isValidApplicationPath(trimmedPath) else {
+                validationMessage = "请选择有效的应用程序路径。"
+                return nil
+            }
+            return trimmedPath
+        case .website:
+            guard let normalizedURL = normalizedWebsiteURL() else {
+                validationMessage = "请输入有效的网址，例如 https://example.com"
+                return nil
+            }
+            return normalizedURL.absoluteString
+        }
+    }
+
+    private func normalizedWebsiteURL() -> URL? {
+        URLNormalizer.normalizedURL(from: path)
+    }
+}
+
+private func isValidApplicationPath(_ path: String) -> Bool {
+    guard !path.isEmpty else { return false }
+
+    var isDirectory: ObjCBool = false
+    let exists = FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory)
+    return exists && isDirectory.boolValue && path.lowercased().hasSuffix(".app")
 }
