@@ -23,6 +23,9 @@ struct AppSettings: Codable, Equatable {
     var hotkeyEnabled: Bool = false
     var hotkeyKeyCode: UInt32 = 49       // Default: Space (keyCode 49)
     var hotkeyModifiers: UInt32 = 0x0D00 // Default: Cmd+Shift (cmdKey | shiftKey)
+    var autoCheckForUpdates: Bool = true
+    var skippedUpdateVersion: String? = nil
+    var lastUpdateCheckAt: Date? = nil
 
     // Computed properties
     var upperItemsPerPage: Int {

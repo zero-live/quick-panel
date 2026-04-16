@@ -18,8 +18,13 @@ class UpdateManager: ObservableObject {
     @Published var releaseNotes: String? = nil
     @Published var isDownloading = false
     @Published var downloadProgress: Double = 0
+    @Published var lastCheckedAt: Date? = nil
+    @Published var lastErrorMessage: String? = nil
 
     private let giteeReleasesAPI = "https://gitee.com/api/v5/repos/zerolive/quick-panel/releases/latest"
+    private let releasePageURL = "https://gitee.com/zerolive/quick-panel/releases"
+    private let expectedAssetNamePrefix = "Quick Panel"
+    private let logCategory: AppLogCategory = .app
 
     var currentVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
@@ -27,10 +32,18 @@ class UpdateManager: ObservableObject {
 
     var hasUpdate: Bool {
         guard let latest = latestVersion else { return false }
-        return isNewerVersion(latest, than: currentVersion)
+        return isNewerVersion(latest, than: currentVersion) && latest != skippedVersion
     }
 
     private init() {}
+
+    var skippedVersion: String? {
+        SettingsManager.shared.settings.skippedUpdateVersion
+    }
+
+    var canAutoCheck: Bool {
+        SettingsManager.shared.settings.autoCheckForUpdates
+    }
 
     private func isNewerVersion(_ version: String, than current: String) -> Bool {
         let latestParts = version.split(separator: ".").compactMap { Int($0) }
@@ -45,9 +58,72 @@ class UpdateManager: ObservableObject {
         return false
     }
 
+    private func normalizedVersion(from tagName: String) -> String {
+        tagName
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "refs/tags/", with: "")
+            .trimmingCharacters(in: CharacterSet(charactersIn: "vV"))
+    }
+
+    private func bestDownloadURL(from assets: [[String: Any]]) -> String? {
+        let dmgAssets = assets.filter { asset in
+            let name = asset["name"] as? String ?? ""
+            return name.lowercased().hasSuffix(".dmg")
+        }
+
+        if let preferred = dmgAssets.first(where: { asset in
+            let name = asset["name"] as? String ?? ""
+            return name.hasPrefix(expectedAssetNamePrefix)
+        }) {
+            return preferred["browser_download_url"] as? String
+        }
+
+        if let firstDMG = dmgAssets.first {
+            return firstDMG["browser_download_url"] as? String
+        }
+
+        return assets.first?["browser_download_url"] as? String
+    }
+
+    private func persistLastCheckedAt(_ date: Date) {
+        SettingsManager.shared.batchUpdate { settings in
+            settings.lastUpdateCheckAt = date
+        }
+        lastCheckedAt = date
+    }
+
+    func refreshStateFromSettings() {
+        lastCheckedAt = SettingsManager.shared.settings.lastUpdateCheckAt
+    }
+
+    func skipCurrentLatestVersion() {
+        guard let latestVersion else { return }
+        SettingsManager.shared.batchUpdate { settings in
+            settings.skippedUpdateVersion = latestVersion
+        }
+        objectWillChange.send()
+    }
+
+    func clearSkippedVersion() {
+        SettingsManager.shared.batchUpdate { settings in
+            settings.skippedUpdateVersion = nil
+        }
+        objectWillChange.send()
+    }
+
+    func performAutomaticCheckIfNeeded() {
+        refreshStateFromSettings()
+        guard canAutoCheck else {
+            AppLogger.debug("已关闭自动检查更新，跳过本次静默检查。", category: logCategory)
+            return
+        }
+        checkForUpdates(silent: true)
+    }
+
     func checkForUpdates(silent: Bool = false) {
         guard !isChecking else { return }
         isChecking = true
+        lastErrorMessage = nil
 
         guard let url = URL(string: giteeReleasesAPI) else {
             isChecking = false
@@ -61,27 +137,39 @@ class UpdateManager: ObservableObject {
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 self.isChecking = false
+                self.persistLastCheckedAt(Date())
 
                 guard let data = data, error == nil,
                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                    self.lastErrorMessage = "无法连接到更新服务器，请稍后再试。"
+                    AppLogger.error("检查更新失败：网络请求或解析失败。", category: self.logCategory)
                     if !silent {
-                        self.showAlert(title: "检查失败", message: "无法连接到更新服务器，请稍后再试。")
+                        self.showAlert(title: "检查失败", message: self.lastErrorMessage ?? "无法连接到更新服务器，请稍后再试。")
                     }
                     return
                 }
 
-                let tagName = (json["tag_name"] as? String ?? "").trimmingCharacters(in: CharacterSet(charactersIn: "v"))
+                let tagName = self.normalizedVersion(from: json["tag_name"] as? String ?? "")
+                guard !tagName.isEmpty else {
+                    self.lastErrorMessage = "更新服务器返回了无效的版本信息。"
+                    AppLogger.error("检查更新失败：tag_name 为空或无效。", category: self.logCategory)
+                    if !silent {
+                        self.showAlert(title: "检查失败", message: self.lastErrorMessage ?? "更新服务器返回了无效的版本信息。")
+                    }
+                    return
+                }
+
                 self.latestVersion = tagName
                 self.releaseNotes = json["body"] as? String
 
                 if let assets = json["assets"] as? [[String: Any]] {
-                    self.downloadURL = assets.first(where: {
-                        ($0["name"] as? String ?? "").hasSuffix(".dmg")
-                    })?["browser_download_url"] as? String
-                        ?? assets.first?["browser_download_url"] as? String
+                    self.downloadURL = self.bestDownloadURL(from: assets)
+                } else {
+                    self.downloadURL = nil
                 }
 
                 if self.hasUpdate {
+                    AppLogger.notice("发现新版本：\(tagName)。", category: self.logCategory)
                     self.showUpdateAlert()
                 } else if !silent {
                     self.showAlert(title: "已是最新版本", message: "当前版本 \(self.currentVersion) 已是最新版本。")
@@ -99,6 +187,7 @@ class UpdateManager: ObservableObject {
             notes.count > 200 ? String(notes.prefix(200)) + "..." : notes
         } ?? "有新版本可用，是否立即下载更新？"
         alert.addButton(withTitle: "立即更新")
+        alert.addButton(withTitle: "跳过此版本")
         alert.addButton(withTitle: "稍后提醒")
         alert.alertStyle = .informational
 
@@ -106,8 +195,11 @@ class UpdateManager: ObservableObject {
             alert.icon = appIcon
         }
 
-        if alert.runModal() == .alertFirstButtonReturn {
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn {
             downloadAndInstall()
+        } else if response == .alertSecondButtonReturn {
+            skipCurrentLatestVersion()
         }
     }
 
@@ -121,7 +213,8 @@ class UpdateManager: ObservableObject {
 
     func downloadAndInstall() {
         guard let urlString = downloadURL, let url = URL(string: urlString) else {
-            if let releasePage = URL(string: "https://gitee.com/zerolive/quick-panel/releases") {
+            lastErrorMessage = "未找到可用安装包，已为你打开发布页。"
+            if let releasePage = URL(string: releasePageURL) {
                 NSWorkspace.shared.open(releasePage)
             }
             return
@@ -137,6 +230,8 @@ class UpdateManager: ObservableObject {
 
             guard let tempURL = tempURL, error == nil else {
                 DispatchQueue.main.async {
+                    self.lastErrorMessage = "无法下载更新文件，请手动前往 Gitee 下载。"
+                    AppLogger.error("更新包下载失败。", category: self.logCategory)
                     self.showAlert(title: "下载失败", message: "无法下载更新文件，请手动前往 Gitee 下载。")
                 }
                 return
@@ -148,9 +243,16 @@ class UpdateManager: ObservableObject {
             try? FileManager.default.moveItem(at: tempURL, to: destURL)
 
             DispatchQueue.main.async {
+                self.lastErrorMessage = nil
+                AppLogger.notice("更新包下载完成，已打开安装文件：\(dmgName)。", category: self.logCategory)
                 NSWorkspace.shared.open(destURL)
             }
         }
         task.resume()
+    }
+
+    func openReleasePage() {
+        guard let url = URL(string: releasePageURL) else { return }
+        NSWorkspace.shared.open(url)
     }
 }

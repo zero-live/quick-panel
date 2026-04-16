@@ -1032,6 +1032,7 @@ struct AdvancedTab: View {
     @State private var showingClearLogsAlert = false
     @State private var isRecordingHotkey = false
     @State private var accessibilityGranted = PermissionManager.shared.checkAccessibilityPermission()
+    @State private var autoCheckForUpdates = SettingsManager.shared.settings.autoCheckForUpdates
 
     private var accessibilityStatusText: String {
         accessibilityGranted ? "已授权" : "未授权"
@@ -1143,6 +1144,89 @@ struct AdvancedTab: View {
                         }
                         .buttonStyle(.borderedProminent)
                     }
+                    .padding(.leading, 32)
+                }
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: 12) {
+                    SettingRow(
+                        icon: "arrow.triangle.2.circlepath",
+                        title: "自动检查更新",
+                        subtitle: "应用启动后静默检查是否有新版本"
+                    ) {
+                        Toggle("", isOn: Binding(
+                            get: { autoCheckForUpdates },
+                            set: { newValue in
+                                autoCheckForUpdates = newValue
+                                settingsManager.batchUpdate { settings in
+                                    settings.autoCheckForUpdates = newValue
+                                    if !newValue {
+                                        settings.skippedUpdateVersion = nil
+                                    }
+                                }
+                                updateManager.refreshStateFromSettings()
+                            }
+                        ))
+                        .labelsHidden()
+                    }
+
+                    VStack(spacing: 8) {
+                        InfoRow(label: "上次检查", value: formattedDate(updateManager.lastCheckedAt))
+                        InfoRow(label: "最新版本", value: updateManager.latestVersion ?? "暂未获取")
+                        InfoRow(label: "跳过版本", value: updateManager.skippedVersion ?? "无")
+                    }
+                    .padding(.leading, 32)
+
+                    if let lastErrorMessage = updateManager.lastErrorMessage {
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.orange)
+                            Text(lastErrorMessage)
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                                .textSelection(.enabled)
+                        }
+                        .padding(.leading, 32)
+                    }
+
+                    HStack(spacing: 10) {
+                        Button(action: {
+                            updateManager.checkForUpdates(silent: false)
+                        }) {
+                            HStack(spacing: 6) {
+                                if updateManager.isChecking {
+                                    ProgressView().scaleEffect(0.7)
+                                } else {
+                                    Image(systemName: updateManager.hasUpdate ? "arrow.down.circle.fill" : "arrow.triangle.2.circlepath")
+                                }
+                                Text(updateManager.isChecking ? "检查中..." : (updateManager.hasUpdate ? "发现新版本，点击更新" : "检查更新"))
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(updateManager.hasUpdate ? .green : .blue)
+                        .disabled(updateManager.isChecking)
+
+                        if updateManager.skippedVersion != nil {
+                            Button("恢复提醒") {
+                                updateManager.clearSkippedVersion()
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                    }
+                    .padding(.leading, 32)
+
+                    Button(action: {
+                        updateManager.openReleasePage()
+                    }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "safari")
+                            Text("打开发布页")
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderless)
                     .padding(.leading, 32)
                 }
 
@@ -1287,24 +1371,6 @@ struct AdvancedTab: View {
                     .padding(.leading, 32)
 
                     Button(action: {
-                        updateManager.checkForUpdates(silent: false)
-                    }) {
-                        HStack(spacing: 6) {
-                            if updateManager.isChecking {
-                                ProgressView().scaleEffect(0.7)
-                            } else {
-                                Image(systemName: updateManager.hasUpdate ? "arrow.down.circle.fill" : "arrow.triangle.2.circlepath")
-                            }
-                            Text(updateManager.isChecking ? "检查中..." : (updateManager.hasUpdate ? "发现新版本，点击更新" : "检查更新"))
-                        }
-                        .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.bordered)
-                    .tint(updateManager.hasUpdate ? .green : .blue)
-                    .disabled(updateManager.isChecking)
-                    .padding(.leading, 32)
-
-                    Button(action: {
                         ChangelogWindowManager.shared.showChangelog()
                     }) {
                         HStack(spacing: 6) {
@@ -1322,6 +1388,8 @@ struct AdvancedTab: View {
         }
         .onAppear {
             refreshAccessibilityStatus()
+            autoCheckForUpdates = settingsManager.settings.autoCheckForUpdates
+            updateManager.refreshStateFromSettings()
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             refreshAccessibilityStatus()
@@ -1333,6 +1401,13 @@ struct AdvancedTab: View {
 
     private func refreshAccessibilityStatus() {
         accessibilityGranted = PermissionManager.shared.checkAccessibilityPermission()
+    }
+
+    private func formattedDate(_ date: Date?) -> String {
+        guard let date else { return "尚未检查" }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd HH:mm"
+        return formatter.string(from: date)
     }
 }
 
