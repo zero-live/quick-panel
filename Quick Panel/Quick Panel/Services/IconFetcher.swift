@@ -28,28 +28,22 @@ class IconFetcher {
     }
 
     func fetchWebsiteMetadata(for urlString: String, completion: @escaping (WebsiteMetadata) -> Void) {
-        print("🧩 fetchFavicon input: \(urlString)")
         guard let url = URLNormalizer.normalizedURL(from: urlString),
               let host = url.host,
               let scheme = url.scheme else {
-            print("❌ URL normalization failed for: \(urlString)")
             DispatchQueue.main.async {
                 completion(WebsiteMetadata(title: nil, icon: nil))
             }
             return
         }
 
-        print("✅ Normalized URL: \(url.absoluteString)")
         let directCandidates = self.defaultIconCandidates(for: host, scheme: scheme)
-        print("🔍 Will try fetching favicon from target website only (no external services)")
-        print("🧪 Direct favicon candidate URLs: \(directCandidates.map { $0.url.absoluteString })")
 
         self.fetchWebsiteHTML(baseURL: url) { html in
             let htmlTitle = html.flatMap { self.extractWebsiteTitle(from: $0) }
             let htmlIconCandidates = html.map { self.extractIconCandidates(from: $0, baseURL: url) } ?? []
             let iconCandidates = self.mergeIconCandidates(primary: htmlIconCandidates, fallback: directCandidates)
 
-            print("🔎 HTML icon links found: \(htmlIconCandidates.map { $0.url.absoluteString })")
             self.fetchBestFavicon(from: iconCandidates) { image in
                 DispatchQueue.main.async {
                     completion(WebsiteMetadata(title: htmlTitle, icon: image))
@@ -66,7 +60,6 @@ class IconFetcher {
 
     private func fetchBestFavicon(from candidates: [IconCandidate], completion: @escaping (NSImage?) -> Void) {
         guard !candidates.isEmpty else {
-            print("⚠️ No favicon candidates to try")
             DispatchQueue.main.async {
                 completion(nil)
             }
@@ -113,7 +106,6 @@ class IconFetcher {
     }
 
     private func fetchImage(at url: URL, completion: @escaping (NSImage?) -> Void) {
-        print("🌐 Attempting to fetch favicon from: \(url.absoluteString)")
 
         var request = URLRequest(url: url)
         request.cachePolicy = .reloadIgnoringLocalCacheData
@@ -123,28 +115,23 @@ class IconFetcher {
 
         URLSession.shared.dataTask(with: request) { data, response, error in
             if let error = error {
-                print("❌ Favicon fetch error for \(url.absoluteString): \(error.localizedDescription)")
                 completion(nil)
                 return
             }
 
             if let httpResponse = response as? HTTPURLResponse {
-                print("📡 HTTP Status: \(httpResponse.statusCode) for \(url.absoluteString)")
 
                 guard (200...299).contains(httpResponse.statusCode) else {
-                    print("⚠️ Non-success status code for \(url.absoluteString)")
                     completion(nil)
                     return
                 }
             }
 
             guard let data else {
-                print("⚠️ No data received from: \(url.absoluteString)")
                 completion(nil)
                 return
             }
 
-            print("📦 Received \(data.count) bytes of data")
             let image = self.createImageFromData(data, sourceURL: url.absoluteString)
             completion(image)
         }.resume()
@@ -155,17 +142,14 @@ class IconFetcher {
     private func createImageFromData(_ data: Data, sourceURL: String) -> NSImage? {
         // Try direct NSImage creation first
         if let image = NSImage(data: data), image.isValid {
-            print("✓ Direct NSImage creation succeeded")
             return image
         }
 
         // For ICO files, try to extract the largest representation
         if sourceURL.hasSuffix(".ico") {
-            print("🔄 Attempting ICO format conversion...")
             return convertICOToImage(data)
         }
 
-        print("✗ All image creation methods failed")
         return nil
     }
 
@@ -173,7 +157,6 @@ class IconFetcher {
         // Try to create NSImage from ICO data
         // NSImage on macOS should support ICO, but sometimes needs special handling
         guard let image = NSImage(data: data) else {
-            print("✗ Failed to create NSImage from ICO data")
             return nil
         }
 
@@ -184,32 +167,27 @@ class IconFetcher {
             let size2 = rep2.pixelsWide * rep2.pixelsHigh
             return size1 < size2
         }) {
-            print("✓ Found ICO representation: \(bestRep.pixelsWide)x\(bestRep.pixelsHigh)")
 
             // Create a new image with the best representation
             let newImage = NSImage(size: NSSize(width: bestRep.pixelsWide, height: bestRep.pixelsHigh))
             newImage.addRepresentation(bestRep)
 
             if newImage.isValid {
-                print("✓ ICO conversion succeeded")
                 return newImage
             }
         }
 
         // If we got an image but couldn't optimize it, return the original
         if image.isValid {
-            print("✓ Using original ICO image")
             return image
         }
 
-        print("✗ ICO conversion failed")
         return nil
     }
 
     // MARK: - HTML Icon Parsing
 
     private func fetchWebsiteHTML(baseURL: URL, completion: @escaping (String?) -> Void) {
-        print("🌐 Fetching HTML for icon links: \(baseURL.absoluteString)")
         var request = URLRequest(url: baseURL)
         request.cachePolicy = .reloadIgnoringLocalCacheData
         request.timeoutInterval = 10
@@ -218,40 +196,34 @@ class IconFetcher {
 
         URLSession.shared.dataTask(with: request) { data, response, error in
             if let error = error {
-                print("❌ HTML fetch error for \(baseURL.absoluteString): \(error.localizedDescription)")
                 completion(nil)
                 return
             }
 
             if let httpResponse = response as? HTTPURLResponse {
                 guard (200...299).contains(httpResponse.statusCode) else {
-                    print("⚠️ HTML fetch status \(httpResponse.statusCode) for \(baseURL.absoluteString)")
                     completion(nil)
                     return
                 }
             }
 
             guard let data = data else {
-                print("⚠️ HTML fetch returned no data for \(baseURL.absoluteString)")
                 completion(nil)
                 return
             }
 
             let html = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1)
             guard let htmlString = html else {
-                print("⚠️ Failed to decode HTML for \(baseURL.absoluteString)")
                 completion(nil)
                 return
             }
 
-            print("📄 HTML length: \(htmlString.count) chars")
             completion(htmlString)
         }.resume()
     }
 
     private func extractIconCandidates(from html: String, baseURL: URL) -> [IconCandidate] {
         guard let linkRegex = try? NSRegularExpression(pattern: "(?i)<link\\b[^>]*>", options: []) else {
-            print("⚠️ Failed to build link tag regex")
             return []
         }
 
@@ -293,7 +265,6 @@ class IconFetcher {
             }
         }
 
-        print("🧾 Parsed \(results.count) icon URLs from HTML")
         return results
     }
 

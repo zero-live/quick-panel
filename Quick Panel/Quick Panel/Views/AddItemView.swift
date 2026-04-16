@@ -293,7 +293,6 @@ struct AddItemView: View {
         path = normalizedPath
         validationMessage = nil
 
-        print("🧭 Fetch website icon: \(normalizedPath)")
         isFetchingIcon = true
         IconFetcher.shared.fetchWebsiteMetadata(for: normalizedPath) { metadata in
             if let title = metadata.title {
@@ -301,9 +300,7 @@ struct AddItemView: View {
             }
 
             if let image = metadata.icon {
-                print("✅ Website icon fetched (\(image.size.width)x\(image.size.height)) for \(normalizedPath)")
             } else {
-                print("⚠️ Website icon fetch returned nil for \(normalizedPath)")
             }
             self.customIcon = metadata.icon
             self.isFetchingIcon = false
@@ -393,7 +390,6 @@ struct AddItemView: View {
             targetOrder = pageEndOrder
         }
 
-        print("📋 Adding item to page \(targetPage), order: \(targetOrder) (page range: \(pageStartOrder)..<\(pageEndOrder), used: \(usedOrders.count), scope: \(bindingBundleId ?? "upper"))")
 
         let newItem = PanelItem(
             name: name,
@@ -671,7 +667,6 @@ struct EditItemView: View {
         path = normalizedPath
         validationMessage = nil
 
-        print("🧭 Fetch website icon (edit): \(normalizedPath)")
         isFetchingIcon = true
         IconFetcher.shared.fetchWebsiteMetadata(for: normalizedPath) { metadata in
             if let title = metadata.title {
@@ -679,9 +674,7 @@ struct EditItemView: View {
             }
 
             if let image = metadata.icon {
-                print("✅ Website icon fetched (\(image.size.width)x\(image.size.height)) for \(normalizedPath)")
             } else {
-                print("⚠️ Website icon fetch returned nil for \(normalizedPath)")
             }
             self.customIcon = metadata.icon
             self.isFetchingIcon = false

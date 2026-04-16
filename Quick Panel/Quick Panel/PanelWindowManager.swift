@@ -46,12 +46,10 @@ class PanelWindowManager {
     private func setupPanelWindow() {
         // Prevent creating multiple windows
         if windowCreated {
-            print("⚠️ Panel window already created, skipping")
             return
         }
 
         windowCreated = true
-        print("🏗️ Creating panel window...")
 
         let panelView = PanelView()
         let hostingController = NSHostingController(rootView: panelView)
@@ -179,7 +177,6 @@ class PanelWindowManager {
     }
 
     func togglePanel(at location: CGPoint) {
-        print("🎯 Toggle panel called at: \(location), current visible: \(isVisible), window exists: \(panelWindow != nil)")
         if isVisible {
             hidePanel()
         } else {
@@ -191,7 +188,6 @@ class PanelWindowManager {
     func showPanel(at location: CGPoint) {
         // If already visible, don't show again
         if isVisible {
-            print("⚠️ Panel already visible, ignoring show request")
             return
         }
 
@@ -201,11 +197,9 @@ class PanelWindowManager {
         }
 
         guard let window = panelWindow else {
-            print("❌ Panel window is nil after setup!")
             return
         }
 
-        print("👀 Showing panel...")
 
         // Notify that panel is about to show (before it becomes frontmost)
         NotificationCenter.default.post(name: .panelWillShow, object: nil)
@@ -242,23 +236,19 @@ class PanelWindowManager {
         // window.makeKey()
 
         isVisible = true
-        print("✅ Panel shown at: \(origin)")
     }
 
     func hidePanel() {
-        print("🙈 Hiding panel, window count: \(NSApplication.shared.windows.count)")
         panelWindow?.orderOut(nil)
         isVisible = false
 
         // Debug: print all windows
         for (index, window) in NSApplication.shared.windows.enumerated() {
-            print("  Window \(index): \(window.title) - visible: \(window.isVisible)")
         }
     }
 
     private func applySettings() {
         guard let window = panelWindow else {
-            print("⚠️ Panel window not created yet, settings will be applied on creation")
             return
         }
 
@@ -285,7 +275,6 @@ class PanelWindowManager {
         // Update window opacity
         window.alphaValue = settings.panelOpacity
 
-        print("⚙️ Settings applied: \(Int(width))×\(Int(height))pt, opacity: \(Int(settings.panelOpacity * 100))%")
     }
 
     private func screenContaining(point: CGPoint) -> NSScreen? {

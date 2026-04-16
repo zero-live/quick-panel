@@ -34,14 +34,12 @@ class DataManager: ObservableObject {
         loadPageGroups()
         loadPageCounts()
 
-        print("📦 Loaded \(items.count) items. Users can add items using the '+' button.")
     }
 
     // MARK: - Load/Save
 
     func loadItems() {
         guard FileManager.default.fileExists(atPath: configFile.path) else {
-            print("📂 No config file found, will create defaults")
             return
         }
 
@@ -49,9 +47,7 @@ class DataManager: ObservableObject {
             let data = try Data(contentsOf: configFile)
             items = try JSONDecoder().decode([PanelItem].self, from: data)
             normalizeOrders(save: false)
-            print("✅ Loaded \(items.count) items from config")
         } catch {
-            print("❌ Failed to load config: \(error.localizedDescription)")
         }
     }
 
@@ -61,9 +57,7 @@ class DataManager: ObservableObject {
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             let data = try encoder.encode(items)
             try data.write(to: configFile)
-            print("✅ Saved \(items.count) items to config")
         } catch {
-            print("❌ Failed to save config: \(error.localizedDescription)")
         }
     }
 
@@ -123,7 +117,6 @@ class DataManager: ObservableObject {
 
         normalizeOrders(save: false)
         saveItems()
-        print("✅ Swapped items at \(fromIndex) and \(toIndex) in \(layer) layer (\(appBundleIdentifier ?? "global"))")
     }
 
     // MARK: - Utility
@@ -152,7 +145,6 @@ class DataManager: ObservableObject {
     func clearAllItems() {
         items.removeAll()
         saveItems()
-        print("🗑️ Cleared all items")
     }
 
     func legacyUnboundLowerItems() -> [PanelItem] {
@@ -182,23 +174,19 @@ class DataManager: ObservableObject {
 
         normalizeOrders(save: false)
         saveItems()
-        print("🔄 Migrated \(legacyItems.count) legacy unbound lower items to upper layer")
     }
 
     // MARK: - Page Groups
 
     func loadPageGroups() {
         guard FileManager.default.fileExists(atPath: groupsFile.path) else {
-            print("📂 No groups file found")
             return
         }
 
         do {
             let data = try Data(contentsOf: groupsFile)
             pageGroups = try JSONDecoder().decode(PageGroup.self, from: data)
-            print("✅ Loaded page groups")
         } catch {
-            print("❌ Failed to load page groups: \(error.localizedDescription)")
         }
     }
 
@@ -208,9 +196,7 @@ class DataManager: ObservableObject {
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             let data = try encoder.encode(pageGroups)
             try data.write(to: groupsFile)
-            print("✅ Saved page groups")
         } catch {
-            print("❌ Failed to save page groups: \(error.localizedDescription)")
         }
     }
 
@@ -236,9 +222,7 @@ class DataManager: ObservableObject {
         do {
             let data = try Data(contentsOf: pageCountsFile)
             pageCounts = try JSONDecoder().decode([String: Int].self, from: data)
-            print("✅ Loaded page counts: \(pageCounts)")
         } catch {
-            print("❌ Failed to load page counts: \(error.localizedDescription)")
         }
     }
 
@@ -249,7 +233,6 @@ class DataManager: ObservableObject {
             let data = try encoder.encode(pageCounts)
             try data.write(to: pageCountsFile)
         } catch {
-            print("❌ Failed to save page counts: \(error.localizedDescription)")
         }
     }
 
@@ -303,7 +286,6 @@ class DataManager: ObservableObject {
         saveItems()
         savePageGroups()
         savePageCounts()
-        print("🗑️ Deleted page \(page) from \(layer) layer (\(appBundleIdentifier ?? "global")), new count: \(pageCounts[scopeKey] ?? 1)")
     }
 
     // MARK: - Helpers

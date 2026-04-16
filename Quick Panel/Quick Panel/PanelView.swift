@@ -40,10 +40,8 @@ struct PanelView: View {
     var lowerItems: [PanelItem] {
         if let frontmostApp = currentFrontmostApp {
             let items = dataManager.getItemsForCurrentApp(bundleIdentifier: frontmostApp.bundleIdentifier)
-            print("📱 Getting lower items for \(frontmostApp.appName) (\(frontmostApp.bundleIdentifier)): \(items.count) items")
             return items
         }
-        print("⚠️ No bundle ID, returning empty lower items")
         return []
     }
 

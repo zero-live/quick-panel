@@ -33,7 +33,6 @@ private func carbonHotkeyCallback(
     // 0x5150 = "QP" 签名
     if hotkeyID.signature == 0x5150 && hotkeyID.id == 1 {
         DispatchQueue.main.async { @MainActor in
-            print("⌨️ 全局快捷键触发！")
             let location = NSEvent.mouseLocation
             PanelWindowManager.shared.togglePanel(at: location)
         }
@@ -64,7 +63,6 @@ class HotkeyManager: ObservableObject {
 
     func start() {
         guard isEnabled else {
-            print("⌨️ 全局快捷键未启用")
             return
         }
         installEventHandler()
@@ -98,7 +96,6 @@ class HotkeyManager: ObservableObject {
             removeEventHandler()
         }
 
-        print("⌨️ 快捷键更新: \(HotkeyManager.displayString(keyCode: keyCode, modifiers: modifiers)), 启用=\(enabled)")
     }
 
     // MARK: - Carbon Event Handler
@@ -121,9 +118,7 @@ class HotkeyManager: ObservableObject {
         )
 
         if status == noErr {
-            print("✅ Carbon 事件处理器已安装")
         } else {
-            print("❌ 安装事件处理器失败: \(status)")
         }
     }
 
@@ -152,9 +147,7 @@ class HotkeyManager: ObservableObject {
 
         if status == noErr {
             hotkeyRef = ref
-            print("✅ 全局快捷键已注册: \(HotkeyManager.displayString(keyCode: currentKeyCode, modifiers: currentModifiers))")
         } else {
-            print("❌ 注册快捷键失败: \(status)")
         }
     }
 

@@ -19,7 +19,6 @@ class SettingsWindowManager {
         if let window = settingsWindow {
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
-            print("✅ Settings window brought to front")
             return
         }
 
@@ -46,7 +45,6 @@ class SettingsWindowManager {
             queue: .main
         ) { [weak self] _ in
             self?.settingsWindow = nil
-            print("🔒 Settings window closed")
         }
 
         settingsWindow = window
@@ -65,7 +63,6 @@ class SettingsWindowManager {
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
 
-        print("✅ Settings window opened at center")
     }
 
     func closeSettings() {

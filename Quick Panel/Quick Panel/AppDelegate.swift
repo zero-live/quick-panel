@@ -18,14 +18,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Prevent multiple launches
         if hasLaunched {
-            print("⚠️ Application already launched, ignoring duplicate launch")
             return
         }
         hasLaunched = true
 
         // Check for existing instances
         if !checkSingleInstance() {
-            print("❌ Another instance is already running, exiting...")
             exit(0)
         }
 
@@ -35,8 +33,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Keep app running in background
         NSApp.setActivationPolicy(.accessory)
 
-        print("🚀 Quick Panel starting...")
-        print("💡 Running from: \(Bundle.main.bundlePath)")
 
         // Always setup services first (will use backup method if no permission)
         setupServices()
@@ -44,13 +40,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Check accessibility permission after a delay
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
             let hasPermission = PermissionManager.shared.checkAccessibilityPermission()
-            print("📋 Final accessibility permission check: \(hasPermission)")
 
             if hasPermission {
-                print("✅ Permission granted!")
             } else if self.mouseEventMonitor?.isUsingBackupMethod() == true {
-                print("⚠️ Using backup method (NSEvent)")
-                print("💡 App is working. If you want better reliability, grant accessibility permission.")
                 self.promptForAccessibilityIfNeeded()
             }
         }
@@ -104,20 +96,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func checkSingleInstance() -> Bool {
         guard let bundleID = Bundle.main.bundleIdentifier else {
-            print("⚠️ Cannot get bundle identifier")
             return true
         }
 
         let runningApps = NSWorkspace.shared.runningApplications
         let instances = runningApps.filter { $0.bundleIdentifier == bundleID }
 
-        print("🔍 Found \(instances.count) instance(s) of Quick Panel")
 
         // Should only find ourselves
         if instances.count > 1 {
-            print("⚠️ Multiple instances detected:")
             for (index, app) in instances.enumerated() {
-                print("  Instance \(index + 1): PID \(app.processIdentifier)")
             }
             return false
         }

@@ -21,10 +21,8 @@ class AppLauncher {
 
             NSWorkspace.shared.openApplication(at: url, configuration: configuration) { app, error in
                 if let error = error {
-                    print("Failed to launch app at \(path): \(error.localizedDescription)")
                     self.showError(message: "无法启动应用: \(error.localizedDescription)")
                 } else {
-                    print("Successfully launched app at \(path)")
                 }
             }
         }
@@ -43,7 +41,6 @@ class AppLauncher {
 
             NSWorkspace.shared.open([websiteURL], withApplicationAt: browserURL, configuration: configuration) { app, error in
                 if let error = error {
-                    print("Failed to open URL \(url) with browser \(browserPath): \(error.localizedDescription)")
                     self.showError(message: "无法打开网址: \(error.localizedDescription)")
                 }
             }

@@ -20,19 +20,15 @@ class MouseEventMonitor {
 
     func start() {
         guard eventTap == nil && globalMonitor == nil else {
-            print("⚠️ Event monitor already exists")
             return
         }
 
-        print("🖱️ Starting mouse event monitor...")
 
         if startCGEventMonitor() {
-            print("✅ Using CGEvent monitor (permission granted)")
             useBackupMethod = false
             return
         }
 
-        print("⚠️ CGEvent failed, trying NSEvent backup method...")
         startNSEventMonitor()
         useBackupMethod = true
     }
@@ -54,7 +50,6 @@ class MouseEventMonitor {
                     let buttonNumber = event.getIntegerValueField(.mouseEventButtonNumber)
                     if buttonNumber == 2 {
                         let location = NSEvent.mouseLocation
-                        print("✨ Middle button clicked at: \(location)")
                         DispatchQueue.main.async {
                             monitor.callback(location)
                         }
@@ -62,7 +57,6 @@ class MouseEventMonitor {
                 } else if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
                     if let tap = monitor.eventTap {
                         CGEvent.tapEnable(tap: tap, enable: true)
-                        print("🔄 Re-enabled event tap")
                     }
                 }
 
@@ -70,7 +64,6 @@ class MouseEventMonitor {
             },
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else {
-            print("❌ Failed to create CGEvent tap")
             return false
         }
 
@@ -91,7 +84,6 @@ class MouseEventMonitor {
 
             if event.buttonNumber == 2 {
                 let location = NSEvent.mouseLocation
-                print("✨ Middle button clicked (NSEvent) at: \(location)")
 
                 DispatchQueue.main.async {
                     self.callback(location)
@@ -100,9 +92,7 @@ class MouseEventMonitor {
         }
 
         if globalMonitor != nil {
-            print("✅ NSEvent monitor started (backup method)")
         } else {
-            print("❌ Failed to start NSEvent monitor")
         }
     }
 
@@ -125,7 +115,6 @@ class MouseEventMonitor {
             globalMonitor = nil
         }
 
-        print("Mouse event monitor stopped")
     }
 
     func isUsingBackupMethod() -> Bool {

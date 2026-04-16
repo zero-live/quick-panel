@@ -106,14 +106,12 @@ class SettingsManager: ObservableObject {
         self.settings = AppSettings.default
         loadSettings()
 
-        print("⚙️ Settings loaded: upper \(settings.upperGridColumns)x\(settings.upperGridRows), lower \(settings.lowerGridColumns)x\(settings.lowerGridRows)")
     }
 
     // MARK: - Load/Save
 
     private func loadSettings() {
         guard FileManager.default.fileExists(atPath: settingsFile.path) else {
-            print("📂 No settings file found, using defaults")
             return
         }
 
@@ -122,10 +120,7 @@ class SettingsManager: ObservableObject {
             var loadedSettings = try JSONDecoder().decode(AppSettings.self, from: data)
             loadedSettings.validate()
             settings = loadedSettings
-            print("✅ Loaded settings from file")
         } catch {
-            print("❌ Failed to load settings: \(error.localizedDescription)")
-            print("   Using default settings")
         }
     }
 
@@ -135,9 +130,7 @@ class SettingsManager: ObservableObject {
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             let data = try encoder.encode(settings)
             try data.write(to: settingsFile)
-            print("✅ Saved settings")
         } catch {
-            print("❌ Failed to save settings: \(error.localizedDescription)")
         }
     }
 
@@ -145,17 +138,14 @@ class SettingsManager: ObservableObject {
 
     func resetToDefaults() {
         settings = AppSettings.default
-        print("🔄 Reset to default settings")
     }
 
     func applySettings() {
         NotificationCenter.default.post(name: .settingsDidChange, object: nil)
-        print("📢 Settings applied")
     }
 
     // Batch update to avoid multiple notifications
     func batchUpdate(_ updateBlock: (inout AppSettings) -> Void) {
-        print("🔄 Starting batch update...")
         var newSettings = settings
         updateBlock(&newSettings)
         newSettings.validate()
@@ -163,7 +153,6 @@ class SettingsManager: ObservableObject {
         // Directly update without triggering didSet multiple times
         // We'll manually save and notify once at the end
         self.settings = newSettings
-        print("✅ Batch update completed")
     }
 }
 

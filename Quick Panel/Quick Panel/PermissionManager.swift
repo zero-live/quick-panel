@@ -22,11 +22,9 @@ class PermissionManager {
     func requestAccessibilityPermission() {
         // Double check if we really don't have permission
         if checkAccessibilityPermission() {
-            print("✅ Permission already granted, skipping request")
             return
         }
 
-        print("📢 Showing permission request dialog")
 
         // First, trigger the system prompt by calling with prompt option
         let options: NSDictionary = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
@@ -88,7 +86,6 @@ class PermissionManager {
                 var error: NSDictionary?
                 appleScript.executeAndReturnError(&error)
                 if let error = error {
-                    print("AppleScript error: \(error)")
                 }
             }
         }

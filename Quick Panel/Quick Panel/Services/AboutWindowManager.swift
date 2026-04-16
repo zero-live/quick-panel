@@ -61,6 +61,5 @@ class AboutWindowManager {
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
 
-        print("ℹ️ About window opened at center")
     }
 }

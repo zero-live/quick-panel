@@ -21,7 +21,6 @@ class StatusBarManager {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
 
         guard let statusItem = statusItem else {
-            print("❌ Failed to create status item")
             return
         }
 
@@ -41,7 +40,6 @@ class StatusBarManager {
         // Create menu
         setupMenu()
 
-        print("✅ Status bar setup complete")
     }
 
     private func setupMenu() {
@@ -95,24 +93,20 @@ class StatusBarManager {
     // MARK: - Actions
 
     @objc private func openSettings() {
-        print("📝 Opening settings...")
         SettingsWindowManager.shared.showSettings()
     }
 
     @objc private func togglePanel() {
-        print("🎯 Toggling panel from status bar")
         // Get mouse location and toggle panel
         let location = NSEvent.mouseLocation
         PanelWindowManager.shared.togglePanel(at: location)
     }
 
     @objc private func showAbout() {
-        print("ℹ️ Showing about...")
         AboutWindowManager.shared.showAbout()
     }
 
     @objc private func quit() {
-        print("👋 Quitting Quick Panel")
         NSApplication.shared.terminate(nil)
     }
 }

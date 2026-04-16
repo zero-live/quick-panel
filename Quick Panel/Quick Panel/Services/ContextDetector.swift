@@ -34,14 +34,12 @@ class ContextDetector: ObservableObject {
     }
 
     @objc private func activeApplicationChanged(_ notification: Notification) {
-        print("🔄 Active application changed")
         updateCurrentApp()
     }
 
     private func updateCurrentApp() {
         guard let frontmostApp = NSWorkspace.shared.frontmostApplication,
               let bundleIdentifier = frontmostApp.bundleIdentifier else {
-            print("⚠️ No frontmost application found")
             applyFrontmostApp(nil)
             return
         }
@@ -51,10 +49,8 @@ class ContextDetector: ObservableObject {
 
         if isOwnApplication(bundleIdentifier) {
             if let lastExternalFrontmostAppInfo {
-                print("↩️ Ignoring self app activation, keep context: \(lastExternalFrontmostAppInfo.appName) (\(lastExternalFrontmostAppInfo.bundleIdentifier))")
                 applyFrontmostApp(lastExternalFrontmostAppInfo)
             } else {
-                print("⚠️ Frontmost app is Quick Panel and no external context is cached")
                 applyFrontmostApp(nil)
             }
             return
@@ -81,14 +77,11 @@ class ContextDetector: ObservableObject {
             return
         }
 
-        print("👀 Current app: \(appInfo.appName) (\(appInfo.bundleIdentifier))")
 
         if let preset = PresetConfiguration.shared.getPreset(for: appInfo.bundleIdentifier) {
-            print("✅ Found preset for \(preset.appName)")
             currentApp = preset
             currentActions = preset.actions
         } else {
-            print("ℹ️ No preset found for \(appInfo.bundleIdentifier)")
             currentApp = nil
             currentActions = []
         }

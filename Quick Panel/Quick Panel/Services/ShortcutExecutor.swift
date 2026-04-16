@@ -26,10 +26,8 @@ class ShortcutExecutor {
     // MARK: - Keyboard Shortcut Execution
 
     private func executeKeyboardShortcut(_ shortcutString: String) {
-        print("⌨️ Executing keyboard shortcut: \(shortcutString)")
 
         guard let (modifiers, keyCode) = parseShortcut(shortcutString) else {
-            print("❌ Failed to parse shortcut: \(shortcutString)")
             return
         }
 
@@ -43,7 +41,6 @@ class ShortcutExecutor {
         keyDownEvent?.post(tap: .cghidEventTap)
         keyUpEvent?.post(tap: .cghidEventTap)
 
-        print("✅ Shortcut executed successfully")
     }
 
     private func parseShortcut(_ shortcut: String) -> (CGEventFlags, CGKeyCode)? {
@@ -112,7 +109,6 @@ class ShortcutExecutor {
     // MARK: - AppleScript Execution
 
     private func executeAppleScript(_ script: String) {
-        print("📜 Executing AppleScript")
 
         let appleScript = NSAppleScript(source: script)
         var error: NSDictionary?
@@ -120,16 +116,13 @@ class ShortcutExecutor {
         appleScript?.executeAndReturnError(&error)
 
         if let error = error {
-            print("❌ AppleScript error: \(error)")
         } else {
-            print("✅ AppleScript executed successfully")
         }
     }
 
     // MARK: - Shell Command Execution
 
     private func executeShellCommand(_ command: String) {
-        print("🖥️ Executing shell command: \(command)")
 
         let task = Process()
         task.launchPath = "/bin/bash"
@@ -138,9 +131,7 @@ class ShortcutExecutor {
         do {
             try task.run()
             task.waitUntilExit()
-            print("✅ Shell command executed successfully")
         } catch {
-            print("❌ Shell command error: \(error)")
         }
     }
 }
