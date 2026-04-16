@@ -1191,6 +1191,18 @@ struct AdvancedTab: View {
                     .buttonStyle(.bordered)
                     .disabled(logExportManager.isExporting)
                     .padding(.leading, 32)
+
+                    Button(action: {
+                        AppLogger.openLogsDirectory()
+                    }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "folder")
+                            Text("打开日志目录")
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderless)
+                    .padding(.leading, 32)
                 }
 
                 Divider()

@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import AppKit
 import OSLog
 
 enum AppLogCategory: String {
@@ -56,6 +57,21 @@ enum AppLogger {
         logsDirectoryURL.appendingPathComponent("app.log")
     }
 
+    nonisolated private static func displayDateString(for date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
+        return formatter.string(from: date)
+    }
+
+    static func openLogsDirectory() {
+        do {
+            try ensureLogDirectoryExists()
+            NSWorkspace.shared.open(logsDirectoryURL)
+        } catch {
+            logger(for: .app).error("打开日志目录失败：\(error.localizedDescription, privacy: .public)")
+        }
+    }
+
     static func debug(_ message: String, category: AppLogCategory) {
         logger(for: category).debug("\(message, privacy: .public)")
         write(level: "DEBUG", message: message, category: category)
@@ -98,7 +114,7 @@ enum AppLogger {
         }
 
         let body = entries
-            .map { "[\(displayFormatter.string(from: $0.timestamp))] [\($0.level)] [\($0.category)] \($0.message)" }
+            .map { "[\(displayDateString(for: $0.timestamp))] [\($0.level)] [\($0.category)] \($0.message)" }
             .joined(separator: "\n")
 
         return header + body + "\n"
