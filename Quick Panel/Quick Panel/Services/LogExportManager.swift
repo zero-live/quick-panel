@@ -41,7 +41,7 @@ class LogExportManager: ObservableObject {
 
         Task.detached(priority: .userInitiated) {
             do {
-                let contents = try self.buildLogContents(hours: hours)
+                let contents = try AppLogger.exportableLogContents(hours: hours)
                 try contents.write(to: destinationURL, atomically: true, encoding: .utf8)
 
                 await MainActor.run {
@@ -59,56 +59,6 @@ class LogExportManager: ObservableObject {
                 }
             }
         }
-    }
-
-    nonisolated private func buildLogContents(hours: Int) throws -> String {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/log")
-        process.arguments = [
-            "show",
-            "--style", "compact",
-            "--last", "\(hours)h",
-            "--predicate", "subsystem == \"\(AppLogger.subsystem)\""
-        ]
-
-        let outputPipe = Pipe()
-        let errorPipe = Pipe()
-        process.standardOutput = outputPipe
-        process.standardError = errorPipe
-
-        try process.run()
-        process.waitUntilExit()
-
-        let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
-        let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
-
-        if process.terminationStatus != 0 {
-            let errorOutput = String(data: errorData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            throw NSError(
-                domain: "QuickPanel.LogExport",
-                code: Int(process.terminationStatus),
-                userInfo: [
-                    NSLocalizedDescriptionKey: errorOutput?.isEmpty == false ? errorOutput! : "系统日志命令执行失败"
-                ]
-            )
-        }
-
-        let logOutput = String(data: outputData, encoding: .utf8) ?? ""
-        let exportHeader = """
-        Quick Panel 调试日志导出
-        导出时间：\(ISO8601DateFormatter().string(from: Date()))
-        最近时长：\(hours) 小时
-        子系统：\(AppLogger.subsystem)
-
-        ========================================
-
-        """
-
-        if logOutput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return exportHeader + "所选时间范围内没有可导出的日志。\n"
-        }
-
-        return exportHeader + logOutput
     }
 
     private func defaultFilename(hours: Int) -> String {
