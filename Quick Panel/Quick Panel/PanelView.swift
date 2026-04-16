@@ -63,10 +63,10 @@ struct PanelView: View {
         guard lowerItems.isEmpty else { return nil }
 
         if currentFrontmostApp == nil {
-            return "未识别到当前应用，可点击空位手动添加下层项目。"
+            return "暂未识别到当前应用，可点击空位手动添加项目。"
         }
 
-        return "当前应用暂无下层项目，可点击空位添加。"
+        return "当前应用还没有专属项目，可点击空位添加。"
     }
 
     var upperPageCount: Int {
@@ -168,27 +168,16 @@ struct LayerGridView: View {
         dataManager.getPageGroupName(layer: layer, page: page, appBundleIdentifier: pageScopeAppBundleId)
     }
 
-    var displayTitle: String {
-        if let groupName = currentGroupName, !groupName.isEmpty {
-            return groupName
-        }
-        return title
-    }
-
     var body: some View {
         VStack(spacing: 8) {
             // Title with page info
             HStack {
-                // Left: Current app name (for lower layer only)
-                if layer == .lower, let appName = currentAppName {
-                    Text(appName)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.secondary)
-                } else {
-                    // Empty space for upper layer to balance layout
-                    Text("")
-                        .font(.system(size: 11, weight: .medium))
-                }
+                LayerContextBadgeView(
+                    layer: layer,
+                    title: title,
+                    currentAppName: currentAppName
+                )
+                .frame(width: 112, alignment: .leading)
 
                 Spacer()
 
@@ -243,6 +232,11 @@ struct LayerGridView: View {
                     .buttonStyle(.plain)
                     .help("新建页面")
                 }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(Color.primary.opacity(0.04))
+                .clipShape(Capsule())
+                .frame(width: 112, alignment: .trailing)
             }
             .padding(.horizontal, 20)
             .padding(.top, 8)
@@ -314,10 +308,7 @@ struct LayerGridView: View {
             .animation(.spring(response: 0.3, dampingFraction: 0.7), value: currentPageItems.map { $0.id })
 
             if let emptyMessage, currentPageItems.isEmpty {
-                Text(emptyMessage)
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                EmptyStateHintView(message: emptyMessage)
                     .padding(.horizontal, 20)
                     .padding(.bottom, 4)
             }
@@ -439,6 +430,7 @@ struct GroupNameHeaderView: View {
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundColor(.blue.opacity(0.85))
                     .lineLimit(1)
+                    .truncationMode(.tail)
             } else {
                 Text("命名分组")
                     .font(.system(size: 11, weight: .medium))
@@ -456,7 +448,55 @@ struct GroupNameHeaderView: View {
         .padding(.vertical, 4)
         .background(Color.primary.opacity(0.04))
         .cornerRadius(8)
+        .frame(maxWidth: 180)
         .help(hasGroupName ? "编辑分组名称" : "为当前页命名")
+    }
+}
+
+struct LayerContextBadgeView: View {
+    let layer: PanelLayer
+    let title: String
+    let currentAppName: String?
+
+    private var badgeTitle: String {
+        if layer == .lower {
+            return currentAppName ?? title
+        }
+        return title
+    }
+
+    private var iconName: String {
+        layer == .lower ? "app.badge" : "square.grid.2x2"
+    }
+
+    var body: some View {
+        Label(badgeTitle, systemImage: iconName)
+            .font(.system(size: 11, weight: .medium))
+            .foregroundColor(.secondary)
+            .lineLimit(1)
+            .truncationMode(.tail)
+    }
+}
+
+struct EmptyStateHintView: View {
+    let message: String
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "info.circle")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(.secondary.opacity(0.8))
+
+            Text(message)
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+                .lineLimit(2)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(Color.primary.opacity(0.035))
+        .cornerRadius(10)
     }
 }
 
