@@ -29,20 +29,17 @@ struct AppLogEntry: Identifiable {
 enum AppLogger {
     nonisolated static let subsystem = "com.benxin.Quick-Panel"
 
-    nonisolated(unsafe) private static let fileManager = FileManager.default
     nonisolated private static let logQueue = DispatchQueue(label: "com.benxin.quick-panel.logger", qos: .utility)
-    nonisolated(unsafe) private static let iso8601Formatter = ISO8601DateFormatter()
-    private static let displayFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
-        return formatter
-    }()
-
     nonisolated private static let maxLogFileSize = 2 * 1024 * 1024
     nonisolated private static let maxLogFileSizeAfterTrim = 1 * 1024 * 1024
+    nonisolated private static let retentionDays = 7
 
     private static func logger(for category: AppLogCategory) -> Logger {
         Logger(subsystem: subsystem, category: category.rawValue)
+    }
+
+    nonisolated private static var fileManager: FileManager {
+        FileManager.default
     }
 
     nonisolated private static var logsDirectoryURL: URL {
@@ -53,8 +50,25 @@ enum AppLogger {
             .appendingPathComponent("Logs", isDirectory: true)
     }
 
-    nonisolated private static var logFileURL: URL {
-        logsDirectoryURL.appendingPathComponent("app.log")
+    nonisolated private static func logFileURL(for date: Date) -> URL {
+        logsDirectoryURL.appendingPathComponent("app-\(fileDateString(for: date)).log")
+    }
+
+    nonisolated private static func fileDateString(for date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: date)
+    }
+
+    nonisolated private static func logTimestampString(for date: Date) -> String {
+        let formatter = ISO8601DateFormatter()
+        return formatter.string(from: date)
+    }
+
+    nonisolated private static func parseLogTimestamp(_ value: String) -> Date? {
+        ISO8601DateFormatter().date(from: value)
     }
 
     nonisolated private static func displayDateString(for date: Date) -> String {
@@ -69,6 +83,16 @@ enum AppLogger {
             NSWorkspace.shared.open(logsDirectoryURL)
         } catch {
             logger(for: .app).error("打开日志目录失败：\(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    static func clearLogs() throws {
+        try logQueue.sync {
+            try ensureLogDirectoryExists()
+            let fileURLs = try listLogFiles()
+            for fileURL in fileURLs {
+                try fileManager.removeItem(at: fileURL)
+            }
         }
     }
 
@@ -101,7 +125,7 @@ enum AppLogger {
         let entries = try readEntries(withinLastHours: hours)
         let header = """
         Quick Panel 调试日志导出
-        导出时间：\(iso8601Formatter.string(from: Date()))
+        导出时间：\(logTimestampString(for: Date()))
         最近时长：\(hours) 小时
         子系统：\(subsystem)
 
@@ -123,13 +147,15 @@ enum AppLogger {
     private static func write(level: String, message: String, category: AppLogCategory) {
         let timestamp = Date()
         let escapedMessage = escape(message)
-        let line = "\(iso8601Formatter.string(from: timestamp))\t\(level)\t\(category.rawValue)\t\(escapedMessage)\n"
+        let line = "\(logTimestampString(for: timestamp))\t\(level)\t\(category.rawValue)\t\(escapedMessage)\n"
 
         logQueue.async {
             do {
                 try ensureLogDirectoryExists()
-                try append(line: line)
-                try trimIfNeeded()
+                try cleanupExpiredLogFiles(referenceDate: timestamp)
+                let fileURL = logFileURL(for: timestamp)
+                try append(line: line, to: fileURL)
+                try trimIfNeeded(fileURL: fileURL)
             } catch {
                 logger(for: .app).error("写入本地日志失败：\(error.localizedDescription, privacy: .public)")
             }
@@ -137,26 +163,29 @@ enum AppLogger {
     }
 
     nonisolated private static func readEntries(withinLastHours hours: Int) throws -> [AppLogEntry] {
-        guard fileManager.fileExists(atPath: logFileURL.path) else {
-            return []
-        }
-
-        let contents = try logQueue.sync {
-            try String(contentsOf: logFileURL, encoding: .utf8)
-        }
+        try ensureLogDirectoryExists()
 
         let cutoffDate = Calendar.current.date(byAdding: .hour, value: -hours, to: Date()) ?? .distantPast
+        let logFiles = try listLogFiles()
 
-        return contents
+        let contentsList = try logQueue.sync {
+            try logFiles.map { fileURL in
+                try String(contentsOf: fileURL, encoding: .utf8)
+            }
+        }
+
+        return contentsList
+            .joined(separator: "\n")
             .split(whereSeparator: \.isNewline)
             .compactMap { parseEntry(from: String($0)) }
             .filter { $0.timestamp >= cutoffDate }
+            .sorted { $0.timestamp < $1.timestamp }
     }
 
     nonisolated private static func parseEntry(from line: String) -> AppLogEntry? {
         let components = line.split(separator: "\t", maxSplits: 3, omittingEmptySubsequences: false)
         guard components.count == 4 else { return nil }
-        guard let timestamp = iso8601Formatter.date(from: String(components[0])) else { return nil }
+        guard let timestamp = parseLogTimestamp(String(components[0])) else { return nil }
 
         return AppLogEntry(
             timestamp: timestamp,
@@ -172,27 +201,39 @@ enum AppLogger {
         }
     }
 
-    nonisolated private static func append(line: String) throws {
+    nonisolated private static func listLogFiles() throws -> [URL] {
+        let fileURLs = try fileManager.contentsOfDirectory(
+            at: logsDirectoryURL,
+            includingPropertiesForKeys: [.contentModificationDateKey],
+            options: [.skipsHiddenFiles]
+        )
+
+        return fileURLs
+            .filter { $0.pathExtension == "log" }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+    }
+
+    nonisolated private static func append(line: String, to fileURL: URL) throws {
         let data = Data(line.utf8)
 
-        if !fileManager.fileExists(atPath: logFileURL.path) {
-            try data.write(to: logFileURL, options: .atomic)
+        if !fileManager.fileExists(atPath: fileURL.path) {
+            try data.write(to: fileURL, options: .atomic)
             return
         }
 
-        let handle = try FileHandle(forWritingTo: logFileURL)
+        let handle = try FileHandle(forWritingTo: fileURL)
         defer { try? handle.close() }
         try handle.seekToEnd()
         try handle.write(contentsOf: data)
     }
 
-    nonisolated private static func trimIfNeeded() throws {
-        let attributes = try fileManager.attributesOfItem(atPath: logFileURL.path)
+    nonisolated private static func trimIfNeeded(fileURL: URL) throws {
+        let attributes = try fileManager.attributesOfItem(atPath: fileURL.path)
         let fileSize = attributes[.size] as? Int ?? 0
 
         guard fileSize > maxLogFileSize else { return }
 
-        let data = try Data(contentsOf: logFileURL)
+        let data = try Data(contentsOf: fileURL)
         let startOffset = max(data.count - maxLogFileSizeAfterTrim, 0)
         var trimmedData = data.subdata(in: startOffset..<data.count)
 
@@ -201,7 +242,22 @@ enum AppLogger {
             trimmedData = trimmedData.subdata(in: contentStart..<trimmedData.endIndex)
         }
 
-        try trimmedData.write(to: logFileURL, options: .atomic)
+        try trimmedData.write(to: fileURL, options: .atomic)
+    }
+
+    nonisolated private static func cleanupExpiredLogFiles(referenceDate: Date) throws {
+        let cutoffDate = Calendar.current.date(byAdding: .day, value: -(retentionDays - 1), to: referenceDate) ?? referenceDate
+        let cutoffPrefix = fileDateString(for: cutoffDate)
+        let files = try listLogFiles()
+
+        for fileURL in files {
+            let filename = fileURL.deletingPathExtension().lastPathComponent
+            guard filename.hasPrefix("app-") else { continue }
+            let filePrefix = String(filename.dropFirst(4))
+            if filePrefix < cutoffPrefix {
+                try fileManager.removeItem(at: fileURL)
+            }
+        }
     }
 
     nonisolated private static func escape(_ message: String) -> String {

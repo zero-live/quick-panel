@@ -1029,6 +1029,7 @@ struct AdvancedTab: View {
     @ObservedObject var updateManager = UpdateManager.shared
     @ObservedObject var logExportManager = LogExportManager.shared
     @State private var showingResetAlert = false
+    @State private var showingClearLogsAlert = false
     @State private var isRecordingHotkey = false
     @State private var accessibilityGranted = PermissionManager.shared.checkAccessibilityPermission()
 
@@ -1203,6 +1204,34 @@ struct AdvancedTab: View {
                     }
                     .buttonStyle(.borderless)
                     .padding(.leading, 32)
+
+                    Button(action: {
+                        showingClearLogsAlert = true
+                    }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "trash")
+                            Text("清空本地日志")
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderless)
+                    .foregroundColor(.red)
+                    .padding(.leading, 32)
+                    .alert("确认清空日志", isPresented: $showingClearLogsAlert) {
+                        Button("取消", role: .cancel) {}
+                        Button("清空", role: .destructive) {
+                            do {
+                                try AppLogger.clearLogs()
+                                logExportManager.lastExportSucceeded = true
+                                logExportManager.lastExportMessage = "本地日志已清空"
+                            } catch {
+                                logExportManager.lastExportSucceeded = false
+                                logExportManager.lastExportMessage = "清空日志失败：\(error.localizedDescription)"
+                            }
+                        }
+                    } message: {
+                        Text("这会删除 Quick Panel 本地保存的调试日志文件。")
+                    }
                 }
 
                 Divider()
