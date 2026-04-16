@@ -13,6 +13,7 @@ class ContextDetector: ObservableObject {
 
     @Published var currentApp: AppPreset?
     @Published var currentActions: [ContextAction] = []
+    @Published var frontmostAppInfo: FrontmostAppInfo?
 
     private init() {
         setupNotifications()
@@ -38,12 +39,15 @@ class ContextDetector: ObservableObject {
         guard let frontmostApp = NSWorkspace.shared.frontmostApplication,
               let bundleIdentifier = frontmostApp.bundleIdentifier else {
             print("⚠️ No frontmost application found")
+            frontmostAppInfo = nil
             currentApp = nil
             currentActions = []
             return
         }
 
-        print("👀 Current app: \(frontmostApp.localizedName ?? "Unknown") (\(bundleIdentifier))")
+        let appName = frontmostApp.localizedName ?? "当前应用"
+        frontmostAppInfo = FrontmostAppInfo(bundleIdentifier: bundleIdentifier, appName: appName)
+        print("👀 Current app: \(appName) (\(bundleIdentifier))")
 
         // Check if we have a preset for this app
         if let preset = PresetConfiguration.shared.getPreset(for: bundleIdentifier) {
@@ -60,4 +64,9 @@ class ContextDetector: ObservableObject {
     func refreshCurrentApp() {
         updateCurrentApp()
     }
+}
+
+struct FrontmostAppInfo: Equatable {
+    let bundleIdentifier: String
+    let appName: String
 }

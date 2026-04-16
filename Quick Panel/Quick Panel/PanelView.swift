@@ -11,11 +11,9 @@ import UniformTypeIdentifiers
 struct PanelView: View {
     @ObservedObject var dataManager = DataManager.shared
     @ObservedObject var settingsManager = SettingsManager.shared
-    @State private var currentAppBundleId: String? = nil
-    @State private var currentAppName: String = "当前应用"
+    @ObservedObject var contextDetector = ContextDetector.shared
     @State private var upperPage = 0
     @State private var lowerPage = 0
-    @State private var lastActiveApp: (bundleId: String?, name: String) = (nil, "当前应用")
 
     var upperColumns: [GridItem] {
         let settings = settingsManager.settings
@@ -41,13 +39,25 @@ struct PanelView: View {
 
     var lowerItems: [PanelItem] {
         // Filter by current app
-        if let bundleId = currentAppBundleId {
-            let items = dataManager.getItemsForCurrentApp(bundleIdentifier: bundleId)
-            print("📱 Getting lower items for \(currentAppName) (\(bundleId)): \(items.count) items")
+        if let frontmostApp = currentFrontmostApp {
+            let items = dataManager.getItemsForCurrentApp(bundleIdentifier: frontmostApp.bundleIdentifier)
+            print("📱 Getting lower items for \(frontmostApp.appName) (\(frontmostApp.bundleIdentifier)): \(items.count) items")
             return items
         }
         print("⚠️ No bundle ID, returning empty lower items")
         return []
+    }
+
+    private var currentFrontmostApp: FrontmostAppInfo? {
+        contextDetector.frontmostAppInfo
+    }
+
+    private var currentAppBundleId: String? {
+        currentFrontmostApp?.bundleIdentifier
+    }
+
+    private var currentAppName: String {
+        currentFrontmostApp?.appName ?? "当前应用"
     }
 
     var upperPageCount: Int {
@@ -97,33 +107,11 @@ struct PanelView: View {
         }
         .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18))
         .onAppear {
-            initializeCurrentAppState()
-        }
-        .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didActivateApplicationNotification)) { notification in
-            if let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
-               app.bundleIdentifier != Bundle.main.bundleIdentifier {
-                lastActiveApp = (app.bundleIdentifier, app.localizedName ?? "当前应用")
-                print("📱 Tracked active app: \(lastActiveApp.name) (\(lastActiveApp.bundleId ?? "nil"))")
-            }
+            contextDetector.refreshCurrentApp()
         }
         .onReceive(NotificationCenter.default.publisher(for: .panelWillShow)) { _ in
-            updateCurrentApp()
+            contextDetector.refreshCurrentApp()
         }
-    }
-
-    private func initializeCurrentAppState() {
-        if let frontApp = NSWorkspace.shared.frontmostApplication,
-           frontApp.bundleIdentifier != Bundle.main.bundleIdentifier {
-            lastActiveApp = (frontApp.bundleIdentifier, frontApp.localizedName ?? "当前应用")
-        }
-        updateCurrentApp()
-    }
-
-    private func updateCurrentApp() {
-        // Use the last tracked active app
-        currentAppBundleId = lastActiveApp.bundleId
-        currentAppName = lastActiveApp.name
-        print("📱 Updated panel to show app: \(currentAppName) (\(currentAppBundleId ?? "nil"))")
     }
 }
 
