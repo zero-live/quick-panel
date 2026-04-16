@@ -194,6 +194,92 @@ git push origin v1.2.1
 - Release 标题与 Tag 一致
 - 版本说明与 `MARKETING_VERSION`、`CURRENT_PROJECT_VERSION` 保持一致
 
+## 打包经验与检查清单
+
+### DMG 安装包规范
+
+用户使用的 DMG 不能只把 `Quick Panel.app` 直接塞进磁盘镜像。标准安装包必须包含：
+
+- `Quick Panel.app`
+- 指向 `/Applications` 的 `Applications` 快捷方式
+- 合理的 Finder 窗口大小和图标位置
+
+否则用户打开 DMG 后只会看到一个孤立的 App，不知道应该拖到哪里安装，体验很差。
+
+### 推荐打包方式
+
+优先使用 `create-dmg` 生成用户安装包。如果本机没有安装，可以先执行：
+
+```bash
+brew install create-dmg
+```
+
+发布包生成示例：
+
+```bash
+VERSION="1.2.2"
+STAGING="dist/dmg-staging"
+
+rm -rf "$STAGING"
+mkdir -p "$STAGING"
+cp -R "dist/release-temp/Quick Panel.app" "$STAGING/"
+rm -f "dist/Quick Panel-v${VERSION}.dmg"
+
+create-dmg \
+  --volname "Quick Panel" \
+  --window-pos 120 120 \
+  --window-size 560 310 \
+  --icon-size 96 \
+  --icon "Quick Panel.app" 150 150 \
+  --app-drop-link 400 150 \
+  --hide-extension "Quick Panel.app" \
+  "dist/Quick Panel-v${VERSION}.dmg" \
+  "$STAGING"
+```
+
+注意：
+
+- 不要用裸 `hdiutil create -srcfolder ...` 作为面向用户的正式 DMG，它只能生成基础镜像，无法提供清晰的“拖到 Applications”安装体验
+- `dist/`、`*.dmg`、`*.zip` 不提交到 Git，只作为 Release 附件上传
+- 如果同一个版本重新打包替换附件，必须先本地验证 DMG，再上传覆盖
+
+### 发布前验证
+
+每次上传 Release 附件前，至少执行以下检查。
+
+确认 App 内版本号：
+
+```bash
+/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "dist/release-temp/Quick Panel.app/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "dist/release-temp/Quick Panel.app/Contents/Info.plist"
+```
+
+确认 DMG 能正常挂载，并且内容正确：
+
+```bash
+rm -rf /tmp/quick-panel-dmg-check
+mkdir -p /tmp/quick-panel-dmg-check
+hdiutil attach "dist/Quick Panel-v${VERSION}.dmg" -mountpoint /tmp/quick-panel-dmg-check -nobrowse -readonly
+ls -la /tmp/quick-panel-dmg-check
+hdiutil detach /tmp/quick-panel-dmg-check
+```
+
+挂载后应该能看到：
+
+```text
+Applications -> /Applications
+Quick Panel.app
+.DS_Store
+```
+
+如果没有 `Applications` 快捷方式，或者 Finder 窗口布局明显异常，不要上传这个 DMG。
+
+### 本次 1.2.2 打包教训
+
+`1.2.2` 首次生成的 DMG 只包含 `Quick Panel.app`，没有 `Applications` 快捷方式，导致安装界面对用户不友好。后续已改用 `create-dmg` 重新生成并替换 Release 附件。
+
+以后发布正式版本时，DMG 必须先挂载验证安装界面，再发布到仓库 Release。
+
 ## 本项目的实际建议
 
 结合 Quick Panel 当前阶段，建议使用以下策略：
