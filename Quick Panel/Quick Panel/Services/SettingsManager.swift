@@ -11,6 +11,11 @@ import Combine
 // MARK: - AppSettings Model
 
 struct AppSettings: Codable, Equatable {
+    static let layerHeaderHeight: CGFloat = 34
+    static let layerGridBottomPadding: CGFloat = 8
+    static let layerPageIndicatorHeight: CGFloat = 14
+    static let layerBaseVerticalPadding: CGFloat = 8
+
     var upperGridColumns: Int = 4   // 3-5
     var upperGridRows: Int = 3      // 3-5
     var lowerGridColumns: Int = 4   // 3-5
@@ -26,6 +31,7 @@ struct AppSettings: Codable, Equatable {
     var autoCheckForUpdates: Bool = true
     var skippedUpdateVersion: String? = nil
     var lastUpdateCheckAt: Date? = nil
+    var lowerPageMemory: [String: Int] = [:]
 
     // Computed properties
     var upperItemsPerPage: Int {
@@ -55,7 +61,12 @@ struct AppSettings: Codable, Equatable {
 
     func layerHeight(for layer: PanelLayer) -> CGFloat {
         let rows = gridRows(for: layer)
-        return CGFloat(rows) * cellHeight + CGFloat(rows - 1) * itemSpacing + 48
+        let gridHeight = CGFloat(rows) * cellHeight + CGFloat(rows - 1) * itemSpacing
+        return AppSettings.layerHeaderHeight
+            + AppSettings.layerBaseVerticalPadding
+            + gridHeight
+            + AppSettings.layerGridBottomPadding
+            + AppSettings.layerPageIndicatorHeight
     }
 
     // Validation
@@ -68,6 +79,9 @@ struct AppSettings: Codable, Equatable {
         cellWidth = max(50, min(100, cellWidth))
         cellHeight = max(60, min(120, cellHeight))
         panelOpacity = max(0.5, min(1.0, panelOpacity))
+        lowerPageMemory = lowerPageMemory.reduce(into: [:]) { partialResult, entry in
+            partialResult[entry.key] = max(0, entry.value)
+        }
     }
 
     static var `default`: AppSettings {
@@ -145,6 +159,17 @@ class SettingsManager: ObservableObject {
 
     func applySettings() {
         NotificationCenter.default.post(name: .settingsDidChange, object: nil)
+    }
+
+    func persistLowerPageMemory(_ memory: [String: Int]) {
+        var newSettings = settings
+        newSettings.lowerPageMemory = memory
+        newSettings.validate()
+
+        guard newSettings != settings else { return }
+
+        settings = newSettings
+        saveSettings()
     }
 
     // Batch update to avoid multiple notifications

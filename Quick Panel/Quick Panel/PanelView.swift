@@ -13,7 +13,7 @@ struct PanelView: View {
     @ObservedObject var settingsManager = SettingsManager.shared
     @ObservedObject var contextDetector = ContextDetector.shared
     @State private var upperPage = 0
-    @State private var lowerPage = 0
+    @State private var lowerPagesByApp: [String: Int] = SettingsManager.shared.settings.lowerPageMemory
 
     var upperColumns: [GridItem] {
         let settings = settingsManager.settings
@@ -71,8 +71,19 @@ struct PanelView: View {
         max(1, Int(ceil(Double(max(upperItems.count, 1)) / Double(upperItemsPerPage))))
     }
 
-    var lowerPageCount: Int {
-        max(1, Int(ceil(Double(max(lowerItems.count, 1)) / Double(lowerItemsPerPage))))
+    private var resolvedLowerPageScopeKey: String {
+        currentAppBundleId ?? "__none__"
+    }
+
+    private var lowerPageBinding: Binding<Int> {
+        Binding(
+            get: {
+                lowerPagesByApp[resolvedLowerPageScopeKey] ?? 0
+            },
+            set: { newValue in
+                updateRememberedLowerPage(max(0, newValue), for: resolvedLowerPageScopeKey)
+            }
+        )
     }
 
     var body: some View {
@@ -98,11 +109,12 @@ struct PanelView: View {
             // Divider
             Divider()
                 .padding(.horizontal, 20)
+                .padding(.vertical, 6)
 
             // Lower grid - current app items
             LayerGridView(
                 items: lowerItems,
-                page: $lowerPage,
+                page: lowerPageBinding,
                 itemsPerPage: lowerItemsPerPage,
                 layer: .lower,
                 pageScopeAppBundleId: currentAppBundleId,
@@ -116,11 +128,58 @@ struct PanelView: View {
         }
         .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18))
         .onAppear {
+            lowerPagesByApp = settingsManager.settings.lowerPageMemory
             contextDetector.refreshCurrentApp()
+            syncLowerPageState()
         }
         .onReceive(NotificationCenter.default.publisher(for: .panelWillShow)) { _ in
             contextDetector.refreshCurrentApp()
+            syncLowerPageState()
         }
+        .onChange(of: currentAppBundleId) { _, _ in
+            syncLowerPageState()
+        }
+        .onChange(of: lowerItems.map(\.id)) { _, _ in
+            syncLowerPageState()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .settingsDidChange)) { _ in
+            lowerPagesByApp = settingsManager.settings.lowerPageMemory
+            syncLowerPageState()
+        }
+    }
+
+    private func syncLowerPageState() {
+        guard let currentAppBundleId else {
+            if lowerPagesByApp["__none__"] != nil {
+                updateRememberedLowerPage(nil, for: "__none__")
+            }
+            return
+        }
+
+        let pageCount = dataManager.getPageCount(for: .lower, appBundleIdentifier: currentAppBundleId)
+        let currentPage = lowerPagesByApp[currentAppBundleId] ?? 0
+        let validatedPage = min(max(0, currentPage), max(0, pageCount - 1))
+
+        if validatedPage != currentPage {
+            updateRememberedLowerPage(validatedPage, for: currentAppBundleId)
+        } else if lowerPagesByApp[currentAppBundleId] == nil {
+            updateRememberedLowerPage(0, for: currentAppBundleId)
+        }
+    }
+
+    private func updateRememberedLowerPage(_ page: Int?, for scopeKey: String) {
+        var updatedMemory = lowerPagesByApp
+
+        if let page {
+            updatedMemory[scopeKey] = max(0, page)
+        } else {
+            updatedMemory.removeValue(forKey: scopeKey)
+        }
+
+        guard updatedMemory != lowerPagesByApp else { return }
+        lowerPagesByApp = updatedMemory
+
+        settingsManager.persistLowerPageMemory(updatedMemory)
     }
 }
 
@@ -140,6 +199,10 @@ struct LayerGridView: View {
     @ObservedObject private var dataManager = DataManager.shared
     @State private var showingGroupNameEditor = false
     @State private var editingGroupName = ""
+
+    private var layerHeight: CGFloat {
+        SettingsManager.shared.settings.layerHeight(for: layer)
+    }
 
     var pageCount: Int {
         dataManager.getPageCount(for: layer, appBundleIdentifier: pageScopeAppBundleId)
@@ -167,7 +230,7 @@ struct LayerGridView: View {
     }
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 4) {
             // Title with page info
             HStack {
                 LayerContextBadgeView(
@@ -237,7 +300,7 @@ struct LayerGridView: View {
                 .frame(width: 112, alignment: .trailing)
             }
             .padding(.horizontal, 20)
-            .padding(.top, 8)
+            .padding(.top, 4)
             .onReceive(NotificationCenter.default.publisher(for: .scrollPreviousPage)) { notification in
                 guard let userInfo = notification.userInfo,
                       let layerString = userInfo["layer"] as? String,
@@ -302,13 +365,13 @@ struct LayerGridView: View {
                 }
             }
             .padding(.horizontal, 20)
-            .padding(.bottom, 16)
+            .padding(.bottom, 6)
             .animation(.spring(response: 0.3, dampingFraction: 0.7), value: currentPageItems.map { $0.id })
 
             if let emptyMessage, currentPageItems.isEmpty {
                 EmptyStateHintView(message: emptyMessage)
                     .padding(.horizontal, 20)
-                    .padding(.bottom, 4)
+                    .padding(.bottom, 2)
             }
 
             if pageCount > 1 {
@@ -324,9 +387,11 @@ struct LayerGridView: View {
                             }
                     }
                 }
-                .padding(.bottom, 8)
+                .padding(.bottom, 2)
             }
         }
+        .frame(height: layerHeight, alignment: .top)
+        .clipped()
     }
 
     private func beginEditingGroupName() {
@@ -492,7 +557,7 @@ struct EmptyStateHintView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 10)
-        .padding(.vertical, 8)
+        .padding(.vertical, 6)
         .background(Color.primary.opacity(0.035))
         .cornerRadius(10)
     }

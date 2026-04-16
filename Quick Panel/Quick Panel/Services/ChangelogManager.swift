@@ -28,9 +28,27 @@ class ChangelogManager {
 
     let releases: [ChangelogRelease] = [
         ChangelogRelease(
+            version: "1.2.2",
+            build: "5",
+            status: "当前版本",
+            sections: [
+                ChangelogSection(title: "优化", items: [
+                    "优化主面板上下层布局，整体更紧凑，减少无效留白",
+                    "优化下层分页状态记忆，按应用维度恢复最近访问页面",
+                    "优化主面板滚轮翻页命中逻辑，避免滚动事件串到内容区域"
+                ]),
+                ChangelogSection(title: "修复", items: [
+                    "修复滚轮切换页面时面板内容跟随垂直滚动的问题",
+                    "修复滚轮切换页码时命中标题区域会误切换上层页面的问题",
+                    "修复主面板顶部和底部内容偶发显示不全的问题",
+                    "修复 Xcode 重新运行后全局快捷键偶发失效的问题"
+                ])
+            ]
+        ),
+        ChangelogRelease(
             version: "1.2.1",
             build: "4",
-            status: "当前版本",
+            status: "已发布",
             sections: [
                 ChangelogSection(title: "新增", items: [
                     "新增统一日志基础设施，并接入关键链路日志",

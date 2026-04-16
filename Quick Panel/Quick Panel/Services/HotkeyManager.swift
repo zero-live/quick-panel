@@ -51,6 +51,7 @@ class HotkeyManager: ObservableObject {
 
     private var hotkeyRef: EventHotKeyRef?
     private var eventHandlerRef: EventHandlerRef?
+    private var retryWorkItem: DispatchWorkItem?
     private let logCategory: AppLogCategory = .app
 
     private init() {
@@ -73,6 +74,8 @@ class HotkeyManager: ObservableObject {
     }
 
     func stop() {
+        retryWorkItem?.cancel()
+        retryWorkItem = nil
         unregisterHotkey()
         removeEventHandler()
         AppLogger.info("全局快捷键监听已停止。", category: logCategory)
@@ -138,6 +141,8 @@ class HotkeyManager: ObservableObject {
 
     private func registerHotkey() {
         unregisterHotkey()
+        retryWorkItem?.cancel()
+        retryWorkItem = nil
 
         let carbonMods = carbonModifierFlags(from: currentModifiers)
         let hotkeyID = EventHotKeyID(signature: 0x5150, id: 1) // "QP"
@@ -154,8 +159,10 @@ class HotkeyManager: ObservableObject {
 
         if status == noErr {
             hotkeyRef = ref
+            AppLogger.debug("全局快捷键注册成功。", category: logCategory)
         } else {
             AppLogger.error("注册全局快捷键失败，status=\(status)。", category: logCategory)
+            scheduleRetryIfNeeded(for: status)
         }
     }
 
@@ -165,6 +172,33 @@ class HotkeyManager: ObservableObject {
             hotkeyRef = nil
             AppLogger.debug("全局快捷键已注销。", category: logCategory)
         }
+    }
+
+    private func scheduleRetryIfNeeded(for status: OSStatus) {
+        guard isEnabled else { return }
+        guard hotkeyRef == nil else { return }
+        guard retryWorkItem == nil else { return }
+
+        let retryableStatuses: Set<OSStatus> = [
+            OSStatus(eventHotKeyExistsErr),
+            OSStatus(eventInternalErr)
+        ]
+        let shouldRetry = retryableStatuses.contains(status)
+        guard shouldRetry else { return }
+
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+            self.retryWorkItem = nil
+            guard self.isEnabled, self.hotkeyRef == nil else { return }
+            AppLogger.notice("尝试重新注册全局快捷键。", category: self.logCategory)
+            if self.eventHandlerRef == nil {
+                self.installEventHandler()
+            }
+            self.registerHotkey()
+        }
+
+        retryWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8, execute: workItem)
     }
 
     private func carbonModifierFlags(from stored: UInt32) -> UInt32 {

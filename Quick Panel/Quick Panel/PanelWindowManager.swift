@@ -152,29 +152,48 @@ class PanelWindowManager {
             guard now - self.lastScrollTime > 0.3 else { return event }
 
             let locationInWindow = event.locationInWindow
-            
             let settings = SettingsManager.shared.settings
             let lowerLayerHeight = settings.layerHeight(for: .lower)
-            
-            let isUpperLayer = locationInWindow.y > lowerLayerHeight
+            let dragHandleHeight: CGFloat = 24
+            let dividerHeight: CGFloat = 20
+            let upperLayerMinY = lowerLayerHeight + dividerHeight
+            let upperLayerMaxY = upperLayerMinY + settings.layerHeight(for: .upper)
+            let lowerLayerMaxY = lowerLayerHeight
+
+            let targetLayer: PanelLayer?
+            if locationInWindow.y >= upperLayerMinY && locationInWindow.y <= upperLayerMaxY {
+                targetLayer = .upper
+            } else if locationInWindow.y >= 0 && locationInWindow.y <= lowerLayerMaxY {
+                targetLayer = .lower
+            } else if locationInWindow.y > upperLayerMaxY && locationInWindow.y <= upperLayerMaxY + dragHandleHeight {
+                targetLayer = .upper
+            } else {
+                targetLayer = nil
+            }
+
+            guard let targetLayer else {
+                return nil
+            }
 
             if event.scrollingDeltaY > 3 {
                 self.lastScrollTime = now
                 NotificationCenter.default.post(
                     name: .scrollPreviousPage,
                     object: nil,
-                    userInfo: ["layer": isUpperLayer ? "upper" : "lower"]
+                    userInfo: ["layer": targetLayer.rawValue]
                 )
+                return nil
             } else if event.scrollingDeltaY < -3 {
                 self.lastScrollTime = now
                 NotificationCenter.default.post(
                     name: .scrollNextPage,
                     object: nil,
-                    userInfo: ["layer": isUpperLayer ? "upper" : "lower"]
+                    userInfo: ["layer": targetLayer.rawValue]
                 )
+                return nil
             }
 
-            return event
+            return nil
         }
     }
 
