@@ -12,6 +12,7 @@ class SettingsWindowManager {
     static let shared = SettingsWindowManager()
 
     private var settingsWindow: NSWindow?
+    private let logCategory: AppLogCategory = .app
 
     private init() {}
 
@@ -19,6 +20,7 @@ class SettingsWindowManager {
         if let window = settingsWindow {
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
+            AppLogger.debug("设置窗口已存在，直接置前。", category: logCategory)
             return
         }
 
@@ -45,6 +47,7 @@ class SettingsWindowManager {
             queue: .main
         ) { [weak self] _ in
             self?.settingsWindow = nil
+            AppLogger.debug("设置窗口已关闭。", category: self?.logCategory ?? .app)
         }
 
         settingsWindow = window
@@ -62,11 +65,12 @@ class SettingsWindowManager {
 
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
-
+        AppLogger.info("设置窗口已打开。", category: logCategory)
     }
 
     func closeSettings() {
         settingsWindow?.close()
         settingsWindow = nil
+        AppLogger.debug("主动关闭设置窗口。", category: logCategory)
     }
 }

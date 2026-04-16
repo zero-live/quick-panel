@@ -13,6 +13,7 @@ class MouseEventMonitor {
     private var globalMonitor: Any?
     private let callback: (CGPoint) -> Void
     private var useBackupMethod = false
+    private let logCategory: AppLogCategory = .app
 
     init(callback: @escaping (CGPoint) -> Void) {
         self.callback = callback
@@ -20,17 +21,21 @@ class MouseEventMonitor {
 
     func start() {
         guard eventTap == nil && globalMonitor == nil else {
+            AppLogger.debug("鼠标监听已启动，忽略重复 start。", category: logCategory)
             return
         }
 
+        AppLogger.info("开始启动鼠标事件监听。", category: logCategory)
 
         if startCGEventMonitor() {
             useBackupMethod = false
+            AppLogger.info("已启用 CGEvent 鼠标监听。", category: logCategory)
             return
         }
 
         startNSEventMonitor()
         useBackupMethod = true
+        AppLogger.notice("CGEvent 监听不可用，已切换到 NSEvent 备用监听。", category: logCategory)
     }
 
     private func startCGEventMonitor() -> Bool {
@@ -51,12 +56,14 @@ class MouseEventMonitor {
                     if buttonNumber == 2 {
                         let location = NSEvent.mouseLocation
                         DispatchQueue.main.async {
+                            AppLogger.debug("收到中键点击事件。", category: monitor.logCategory)
                             monitor.callback(location)
                         }
                     }
                 } else if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
                     if let tap = monitor.eventTap {
                         CGEvent.tapEnable(tap: tap, enable: true)
+                        AppLogger.notice("CGEvent tap 被系统禁用后已重新启用。", category: monitor.logCategory)
                     }
                 }
 
@@ -64,6 +71,7 @@ class MouseEventMonitor {
             },
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else {
+            AppLogger.error("创建 CGEvent tap 失败。", category: logCategory)
             return false
         }
 
@@ -86,13 +94,10 @@ class MouseEventMonitor {
                 let location = NSEvent.mouseLocation
 
                 DispatchQueue.main.async {
+                    AppLogger.debug("收到备用 NSEvent 中键点击事件。", category: self.logCategory)
                     self.callback(location)
                 }
             }
-        }
-
-        if globalMonitor != nil {
-        } else {
         }
     }
 
@@ -114,7 +119,7 @@ class MouseEventMonitor {
             NSEvent.removeMonitor(monitor)
             globalMonitor = nil
         }
-
+        AppLogger.info("鼠标事件监听已停止。", category: logCategory)
     }
 
     func isUsingBackupMethod() -> Bool {

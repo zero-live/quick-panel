@@ -10,6 +10,7 @@ import ServiceManagement
 
 class LoginItemManager {
     static let shared = LoginItemManager()
+    private let logCategory: AppLogCategory = .app
 
     private init() {}
 
@@ -21,11 +22,14 @@ class LoginItemManager {
                 } else {
                     try SMAppService.mainApp.unregister()
                 }
+                AppLogger.notice("开机启动状态更新成功，enabled=\(enabled)。", category: logCategory)
                 return true
             } catch {
+                AppLogger.error("设置开机启动失败：\(error.localizedDescription)", category: logCategory)
                 return false
             }
         } else {
+            AppLogger.notice("当前系统版本不支持开机启动设置。", category: logCategory)
             return false
         }
     }

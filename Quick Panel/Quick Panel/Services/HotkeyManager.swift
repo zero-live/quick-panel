@@ -51,6 +51,7 @@ class HotkeyManager: ObservableObject {
 
     private var hotkeyRef: EventHotKeyRef?
     private var eventHandlerRef: EventHandlerRef?
+    private let logCategory: AppLogCategory = .app
 
     private init() {
         let settings = SettingsManager.shared.settings
@@ -63,8 +64,10 @@ class HotkeyManager: ObservableObject {
 
     func start() {
         guard isEnabled else {
+            AppLogger.debug("全局快捷键未启用，跳过启动。", category: logCategory)
             return
         }
+        AppLogger.info("开始启动全局快捷键监听。", category: logCategory)
         installEventHandler()
         registerHotkey()
     }
@@ -72,6 +75,7 @@ class HotkeyManager: ObservableObject {
     func stop() {
         unregisterHotkey()
         removeEventHandler()
+        AppLogger.info("全局快捷键监听已停止。", category: logCategory)
     }
 
     func updateHotkey(keyCode: UInt32, modifiers: UInt32, enabled: Bool) {
@@ -95,7 +99,7 @@ class HotkeyManager: ObservableObject {
         } else {
             removeEventHandler()
         }
-
+        AppLogger.notice("全局快捷键已更新：\(HotkeyManager.displayString(keyCode: keyCode, modifiers: modifiers))，enabled=\(enabled)。", category: logCategory)
     }
 
     // MARK: - Carbon Event Handler
@@ -118,7 +122,9 @@ class HotkeyManager: ObservableObject {
         )
 
         if status == noErr {
+            AppLogger.debug("Carbon 快捷键事件处理器安装成功。", category: logCategory)
         } else {
+            AppLogger.error("安装 Carbon 快捷键事件处理器失败，status=\(status)。", category: logCategory)
         }
     }
 
@@ -126,6 +132,7 @@ class HotkeyManager: ObservableObject {
         if let handler = eventHandlerRef {
             RemoveEventHandler(handler)
             eventHandlerRef = nil
+            AppLogger.debug("Carbon 快捷键事件处理器已移除。", category: logCategory)
         }
     }
 
@@ -148,6 +155,7 @@ class HotkeyManager: ObservableObject {
         if status == noErr {
             hotkeyRef = ref
         } else {
+            AppLogger.error("注册全局快捷键失败，status=\(status)。", category: logCategory)
         }
     }
 
@@ -155,6 +163,7 @@ class HotkeyManager: ObservableObject {
         if let ref = hotkeyRef {
             UnregisterEventHotKey(ref)
             hotkeyRef = nil
+            AppLogger.debug("全局快捷键已注销。", category: logCategory)
         }
     }
 
