@@ -18,7 +18,7 @@ enum AppLogCategory: String {
 }
 
 enum AppLogger {
-    private static let subsystem = Bundle.main.bundleIdentifier ?? "com.benxin.Quick-Panel"
+    nonisolated static let subsystem = "com.benxin.Quick-Panel"
 
     private static func logger(for category: AppLogCategory) -> Logger {
         Logger(subsystem: subsystem, category: category.rawValue)

@@ -1027,6 +1027,7 @@ struct AdvancedTab: View {
     @ObservedObject var settingsManager = SettingsManager.shared
     @ObservedObject var hotkeyManager = HotkeyManager.shared
     @ObservedObject var updateManager = UpdateManager.shared
+    @ObservedObject var logExportManager = LogExportManager.shared
     @State private var showingResetAlert = false
     @State private var isRecordingHotkey = false
     @State private var accessibilityGranted = PermissionManager.shared.checkAccessibilityPermission()
@@ -1141,6 +1142,54 @@ struct AdvancedTab: View {
                         }
                         .buttonStyle(.borderedProminent)
                     }
+                    .padding(.leading, 32)
+                }
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Image(systemName: "doc.text.magnifyingglass")
+                            .foregroundColor(.blue)
+                            .frame(width: 24)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("导出调试日志")
+                                .font(.system(size: 13, weight: .medium))
+                            Text("导出最近 24 小时日志，方便反馈问题时附带排查信息")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                    }
+
+                    if let lastExportMessage = logExportManager.lastExportMessage {
+                        HStack(spacing: 8) {
+                            Image(systemName: logExportManager.lastExportSucceeded ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                                .foregroundColor(logExportManager.lastExportSucceeded ? .green : .orange)
+                            Text(lastExportMessage)
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                                .textSelection(.enabled)
+                        }
+                        .padding(.leading, 32)
+                    }
+
+                    Button(action: {
+                        logExportManager.exportRecentLogs(hours: 24)
+                    }) {
+                        HStack(spacing: 6) {
+                            if logExportManager.isExporting {
+                                ProgressView()
+                                    .scaleEffect(0.7)
+                            } else {
+                                Image(systemName: "square.and.arrow.down")
+                            }
+                            Text(logExportManager.isExporting ? "导出中..." : "导出最近 24 小时日志")
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(logExportManager.isExporting)
                     .padding(.leading, 32)
                 }
 
