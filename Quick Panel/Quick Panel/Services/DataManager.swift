@@ -344,9 +344,20 @@ class DataManager: ObservableObject {
                 return lhsItem.order < rhsItem.order
             }
 
-            for (normalizedOrder, index) in sortedIndices.enumerated() {
-                if normalizedItems[index].order != normalizedOrder {
-                    normalizedItems[index].order = normalizedOrder
+            var usedOrders = Set<Int>()
+
+            for index in sortedIndices {
+                let originalOrder = normalizedItems[index].order
+                var resolvedOrder = max(0, originalOrder)
+
+                while usedOrders.contains(resolvedOrder) {
+                    resolvedOrder += 1
+                }
+
+                usedOrders.insert(resolvedOrder)
+
+                if normalizedItems[index].order != resolvedOrder {
+                    normalizedItems[index].order = resolvedOrder
                     didChange = true
                 }
             }

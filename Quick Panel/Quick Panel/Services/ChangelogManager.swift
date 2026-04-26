@@ -28,9 +28,23 @@ class ChangelogManager {
 
     let releases: [ChangelogRelease] = [
         ChangelogRelease(
+            version: "1.2.3",
+            build: "6",
+            status: "当前版本",
+            sections: [
+                ChangelogSection(title: "优化", items: [
+                    "优化添加项目窗口的类型选择顺序，将网站放在应用程序前面",
+                    "优化添加项目窗口默认类型，默认选中网站，贴合更高频的网站添加场景"
+                ]),
+                ChangelogSection(title: "修复", items: [
+                    "修复下层面板第二页添加网站后项目会被保存到第一页的问题"
+                ])
+            ]
+        ),
+        ChangelogRelease(
             version: "1.2.2",
             build: "5",
-            status: "当前版本",
+            status: "已发布",
             sections: [
                 ChangelogSection(title: "优化", items: [
                     "优化主面板上下层布局，整体更紧凑，减少无效留白",

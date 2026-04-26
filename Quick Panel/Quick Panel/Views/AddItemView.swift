@@ -19,7 +19,7 @@ struct AddItemView: View {
     let targetPage: Int
 
     @State private var name = ""
-    @State private var itemType: ItemType = .application
+    @State private var itemType: ItemType = .website
     @State private var layer: PanelLayer = .upper
     @State private var path = ""
     @State private var browserPath: String?

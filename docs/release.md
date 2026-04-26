@@ -4,10 +4,13 @@
 
 ## 当前基线
 
-- 对外版本号：`1.2.2`
-- 构建号：`5`
+- 对外版本号：`1.2.3`
+- 构建号：`6`
 - 当前发布分支：`master`
 - 当前 Tag 历史：
+  - `v1.2.3`
+  - `v1.2.2`
+  - `v1.2.1`
   - `v1.2.0`
   - `v1.0.1`
   - `v1.0.0`
@@ -84,8 +87,8 @@ Quick Panel 使用两套版本信息：
 
 当前字段：
 
-- `MARKETING_VERSION = 1.2.0`
-- `CURRENT_PROJECT_VERSION = 3`
+- `MARKETING_VERSION = 1.2.3`
+- `CURRENT_PROJECT_VERSION = 6`
 
 ### 运行时读取位置
 
@@ -217,7 +220,7 @@ brew install create-dmg
 发布包生成示例：
 
 ```bash
-VERSION="1.2.2"
+VERSION="1.2.3"
 STAGING="dist/dmg-staging"
 
 rm -rf "$STAGING"
