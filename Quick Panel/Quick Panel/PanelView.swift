@@ -1568,6 +1568,37 @@ struct DesktopGridView: NSViewRepresentable {
             }
         }
 
+        func rightMouseDown(at point: CGPoint, event: NSEvent) {
+            guard let collectionView,
+                  let index = indexAt(point),
+                  index >= 0,
+                  index < slots.count,
+                  let item = slots[index].item else {
+                return
+            }
+
+            cancelPendingPageSwitch()
+
+            let menu = NSMenu()
+            menu.addItem(
+                withTitle: "编辑",
+                action: #selector(PanelGridCollectionView.editMenuItem(_:)),
+                keyEquivalent: ""
+            )
+            menu.addItem(
+                withTitle: "删除",
+                action: #selector(PanelGridCollectionView.deleteMenuItem(_:)),
+                keyEquivalent: ""
+            )
+
+            menu.items.forEach { menuItem in
+                menuItem.target = collectionView
+                menuItem.representedObject = item
+            }
+
+            NSMenu.popUpContextMenu(menu, with: event, for: collectionView)
+        }
+
         private func indexAt(_ point: CGPoint) -> Int? {
             guard cellSize.width > 0, cellSize.height > 0 else { return nil }
 
@@ -1890,6 +1921,20 @@ final class PanelGridCollectionView: NSCollectionView {
 
     override func mouseUp(with event: NSEvent) {
         gridCoordinator?.mouseUp(at: convert(event.locationInWindow, from: nil))
+    }
+
+    override func rightMouseDown(with event: NSEvent) {
+        gridCoordinator?.rightMouseDown(at: convert(event.locationInWindow, from: nil), event: event)
+    }
+
+    @objc func editMenuItem(_ sender: NSMenuItem) {
+        guard let item = sender.representedObject as? PanelItem else { return }
+        AddItemWindowManager.shared.showEditItemWindow(item: item)
+    }
+
+    @objc func deleteMenuItem(_ sender: NSMenuItem) {
+        guard let item = sender.representedObject as? PanelItem else { return }
+        DataManager.shared.deleteItem(item)
     }
 }
 
