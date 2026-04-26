@@ -16,7 +16,7 @@ class AddItemWindowManager {
 
     private init() {}
 
-    func showAddItemWindow(layer: PanelLayer = .upper, appBundleId: String? = nil, appName: String? = nil, page: Int = 0) {
+    func showAddItemWindow(layer: PanelLayer = .upper, appBundleId: String? = nil, appName: String? = nil, page: Int = 0, slot: Int? = nil) {
         addWindow?.close()
 
         let resolvedBinding = resolvedBindingContext(
@@ -29,7 +29,8 @@ class AddItemWindowManager {
             presetLayer: layer,
             presetAppBundleId: resolvedBinding.bundleIdentifier,
             presetAppName: resolvedBinding.appName,
-            targetPage: page
+            targetPage: page,
+            targetSlot: slot
         )
         let hostingController = NSHostingController(rootView: addView)
 

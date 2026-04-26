@@ -28,9 +28,29 @@ class ChangelogManager {
 
     let releases: [ChangelogRelease] = [
         ChangelogRelease(
+            version: "1.2.4",
+            build: "7",
+            status: "当前版本",
+            sections: [
+                ChangelogSection(title: "新增", items: [
+                    "新增主面板项目跨页移动能力，可将应用或网站从当前页移动到其他页",
+                    "新增基于页面与槽位的项目位置模型，提升分页布局的稳定性"
+                ]),
+                ChangelogSection(title: "优化", items: [
+                    "优化主面板拖拽换位交互，支持项目移动到已占用格子时后续项目顺延",
+                    "优化跨页拖动边缘提示，拖动到左右边缘时显示可切页区域",
+                    "优化拖动过程中的空格子 hover 状态，避免误显示添加高亮"
+                ]),
+                ChangelogSection(title: "修复", items: [
+                    "修复项目只能在当前页调整、无法跨页移动的问题",
+                    "修复快速拖动和跨页拖动后项目偶发无法继续移动的问题"
+                ])
+            ]
+        ),
+        ChangelogRelease(
             version: "1.2.3",
             build: "6",
-            status: "当前版本",
+            status: "已发布",
             sections: [
                 ChangelogSection(title: "优化", items: [
                     "优化添加项目窗口的类型选择顺序，将网站放在应用程序前面",

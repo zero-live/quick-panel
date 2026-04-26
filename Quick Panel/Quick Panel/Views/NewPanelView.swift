@@ -355,7 +355,16 @@ struct DropDelegate: SwiftUI.DropDelegate {
 
                 // Only allow reordering within the same layer
                 if allItems[fromIndex].layer == allItems[toIndex].layer {
-                    DataManager.shared.moveItem(from: fromIndex, to: toIndex)
+                    let targetItem = allItems[toIndex]
+                    let settings = SettingsManager.shared.settings
+                    DataManager.shared.moveItem(
+                        id: draggedId,
+                        layer: targetItem.layer,
+                        appBundleIdentifier: targetItem.appBundleIdentifier,
+                        toPage: targetItem.page,
+                        slotIndex: targetItem.slot,
+                        itemsPerPage: settings.itemsPerPage(for: targetItem.layer)
+                    )
                 }
             }
         }

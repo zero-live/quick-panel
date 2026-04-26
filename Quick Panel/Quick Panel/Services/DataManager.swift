@@ -8,6 +8,11 @@
 import Foundation
 import Combine
 
+struct GridPosition: Hashable, Codable {
+    var page: Int
+    var slot: Int
+}
+
 class DataManager: ObservableObject {
     static let shared = DataManager()
 
@@ -48,7 +53,7 @@ class DataManager: ObservableObject {
         do {
             let data = try Data(contentsOf: configFile)
             items = try JSONDecoder().decode([PanelItem].self, from: data)
-            normalizeOrders(save: false)
+            normalizePositions(save: false)
         } catch {
             AppLogger.error("读取项目配置失败：\(error.localizedDescription)", category: logCategory)
         }
@@ -69,79 +74,114 @@ class DataManager: ObservableObject {
 
     func addItem(_ item: PanelItem) {
         items.append(item)
-        normalizeOrders(save: false)
+        normalizePositions(save: false)
         saveItems()
         AppLogger.info("已添加项目：\(item.name)，layer=\(item.layer.rawValue)。", category: logCategory)
     }
 
     func updateItem(_ item: PanelItem) {
-        if let index = items.firstIndex(where: { $0.id == item.id }) {
-            items[index] = item
-            normalizeOrders(save: false)
-            saveItems()
-            AppLogger.info("已更新项目：\(item.name)，layer=\(item.layer.rawValue)。", category: logCategory)
-        }
+        guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
+
+        items[index] = item
+        normalizePositions(save: false)
+        saveItems()
+        AppLogger.info("已更新项目：\(item.name)，layer=\(item.layer.rawValue)。", category: logCategory)
     }
 
     func deleteItem(_ item: PanelItem) {
         items.removeAll { $0.id == item.id }
-        normalizeOrders(save: false)
+        normalizePositions(save: false)
         saveItems()
         AppLogger.notice("已删除项目：\(item.name)。", category: logCategory)
     }
 
-    func moveItem(from sourceIndex: Int, to destinationIndex: Int) {
-        guard sourceIndex != destinationIndex,
-              sourceIndex >= 0, sourceIndex < items.count,
-              destinationIndex >= 0, destinationIndex <= items.count else {
+    func moveItem(id: UUID, layer: PanelLayer, appBundleIdentifier: String? = nil, toPage: Int, slotIndex: Int, itemsPerPage: Int) {
+        normalizePositions(save: false)
+
+        guard itemsPerPage > 0,
+              let movingIndex = items.firstIndex(where: { item in
+                  item.id == id &&
+                  item.layer == layer &&
+                  matchesScope(item: item, layer: layer, appBundleIdentifier: appBundleIdentifier)
+              }) else {
             return
         }
 
-        let item = items.remove(at: sourceIndex)
-        items.insert(item, at: destinationIndex)
+        let targetPosition = GridPosition(
+            page: max(0, toPage),
+            slot: min(max(0, slotIndex), itemsPerPage - 1)
+        )
+        let sourceItem = items[movingIndex]
+        let sourcePosition = GridPosition(page: max(0, sourceItem.page), slot: min(max(0, sourceItem.slot), itemsPerPage - 1))
+        guard sourcePosition != targetPosition else { return }
+
+        var updatedItems = items
+        var occupiedIndices: [GridPosition: Int] = [:]
+        for index in updatedItems.indices {
+            guard index != movingIndex,
+                  updatedItems[index].layer == layer,
+                  matchesScope(item: updatedItems[index], layer: layer, appBundleIdentifier: appBundleIdentifier) else {
+                continue
+            }
+
+            let position = GridPosition(page: max(0, updatedItems[index].page), slot: min(max(0, updatedItems[index].slot), itemsPerPage - 1))
+            occupiedIndices[position] = index
+        }
+
+        if occupiedIndices[targetPosition] != nil {
+            shiftItemsForwardForInsertion(
+                to: targetPosition,
+                occupiedIndices: occupiedIndices,
+                itemsPerPage: itemsPerPage,
+                in: &updatedItems
+            )
+        }
+
+        updatedItems[movingIndex].page = targetPosition.page
+        updatedItems[movingIndex].slot = targetPosition.slot
+        items = updatedItems
         saveItems()
-        AppLogger.debug("已移动项目顺序：from=\(sourceIndex), to=\(destinationIndex)。", category: logCategory)
+        AppLogger.debug("已移动项目到页面槽位：layer=\(layer.rawValue)，page=\(targetPosition.page)，slot=\(targetPosition.slot)。", category: logCategory)
     }
 
-    func swapItems(layer: PanelLayer, appBundleIdentifier: String? = nil, fromIndex: Int, toIndex: Int) {
-        var layerItems = getItems(for: layer, appBundleIdentifier: appBundleIdentifier)
-
-        guard fromIndex >= 0, fromIndex < layerItems.count,
-              toIndex >= 0, toIndex < layerItems.count,
-              fromIndex != toIndex else {
-            return
+    func replaceItems(for layer: PanelLayer, appBundleIdentifier: String? = nil, with replacementItems: [PanelItem]) {
+        var updatedItems = items.filter { item in
+            !(item.layer == layer && matchesScope(item: item, layer: layer, appBundleIdentifier: appBundleIdentifier))
         }
-
-        let fromOrder = layerItems[fromIndex].order
-        let toOrder = layerItems[toIndex].order
-        layerItems[fromIndex].order = toOrder
-        layerItems[toIndex].order = fromOrder
-
-        for layerItem in layerItems {
-            if let mainIndex = items.firstIndex(where: { $0.id == layerItem.id }) {
-                items[mainIndex] = layerItem
-            }
-        }
-
-        normalizeOrders(save: false)
+        updatedItems.append(contentsOf: replacementItems)
+        items = updatedItems
+        normalizePositions(save: false)
         saveItems()
-        AppLogger.debug("已交换项目顺序：layer=\(layer.rawValue)，from=\(fromIndex)，to=\(toIndex)。", category: logCategory)
+        AppLogger.debug("已批量更新项目布局：layer=\(layer.rawValue)，count=\(replacementItems.count)。", category: logCategory)
+    }
+
+    func replacePageItems(for layer: PanelLayer, appBundleIdentifier: String? = nil, page: Int, with replacementItems: [PanelItem]) {
+        var updatedItems = items.filter { item in
+            !(item.layer == layer &&
+              matchesScope(item: item, layer: layer, appBundleIdentifier: appBundleIdentifier) &&
+              item.page == page)
+        }
+        updatedItems.append(contentsOf: replacementItems)
+        items = updatedItems
+        normalizePositions(save: false)
+        saveItems()
+        AppLogger.debug("已更新页面项目布局：layer=\(layer.rawValue)，page=\(page)，count=\(replacementItems.count)。", category: logCategory)
     }
 
     // MARK: - Utility
 
     func getItems(for layer: PanelLayer, appBundleIdentifier: String? = nil) -> [PanelItem] {
-        let filteredItems = items.filter { item in
-            guard item.layer == layer else { return false }
+        items
+            .filter { item in
+                guard item.layer == layer else { return false }
 
-            if layer == .lower, let appBundleIdentifier {
-                return item.appBundleIdentifier == appBundleIdentifier
+                if layer == .lower, let appBundleIdentifier {
+                    return item.appBundleIdentifier == appBundleIdentifier
+                }
+
+                return true
             }
-
-            return true
-        }
-
-        return filteredItems.sorted { $0.order < $1.order }
+            .sorted(by: sortByPosition)
     }
 
     func getItemsForCurrentApp(bundleIdentifier: String?) -> [PanelItem] {
@@ -151,6 +191,33 @@ class DataManager: ObservableObject {
         return getItems(for: .lower, appBundleIdentifier: bundleId)
     }
 
+    func itemAt(layer: PanelLayer, appBundleIdentifier: String? = nil, page: Int, slot: Int) -> PanelItem? {
+        items.first { item in
+            item.layer == layer &&
+            matchesScope(item: item, layer: layer, appBundleIdentifier: appBundleIdentifier) &&
+            item.page == page &&
+            item.slot == slot
+        }
+    }
+
+    func nextAvailablePosition(for layer: PanelLayer, appBundleIdentifier: String? = nil, preferredPage: Int, itemsPerPage: Int) -> GridPosition {
+        guard itemsPerPage > 0 else {
+            return GridPosition(page: max(0, preferredPage), slot: 0)
+        }
+
+        let targetPage = max(0, preferredPage)
+        let scopedItems = getItems(for: layer, appBundleIdentifier: appBundleIdentifier)
+        let occupiedLinearIndexes = Set(scopedItems.map {
+            max(0, $0.page) * itemsPerPage + min(max(0, $0.slot), itemsPerPage - 1)
+        })
+
+        var linearIndex = targetPage * itemsPerPage
+        while occupiedLinearIndexes.contains(linearIndex) {
+            linearIndex += 1
+        }
+        return position(fromLinearIndex: linearIndex, itemsPerPage: itemsPerPage)
+    }
+
     func clearAllItems() {
         items.removeAll()
         saveItems()
@@ -158,31 +225,43 @@ class DataManager: ObservableObject {
     }
 
     func legacyUnboundLowerItems() -> [PanelItem] {
-        items.filter { item in
-            guard item.layer == .lower else { return false }
-            guard let bundleIdentifier = item.appBundleIdentifier?.trimmingCharacters(in: .whitespacesAndNewlines) else {
-                return true
+        items
+            .filter { item in
+                guard item.layer == .lower else { return false }
+                guard let bundleIdentifier = item.appBundleIdentifier?.trimmingCharacters(in: .whitespacesAndNewlines) else {
+                    return true
+                }
+                return bundleIdentifier.isEmpty
             }
-            return bundleIdentifier.isEmpty
-        }
-        .sorted { $0.order < $1.order }
+            .sorted(by: sortByPosition)
     }
 
     func migrateLegacyUnboundLowerItemsToUpper() {
         let legacyItems = legacyUnboundLowerItems()
         guard !legacyItems.isEmpty else { return }
 
-        var nextUpperOrder = (getItems(for: .upper).map(\.order).max() ?? -1) + 1
+        let settings = SettingsManager.shared.settings
+        var nextPosition = nextAvailablePosition(
+            for: .upper,
+            preferredPage: 0,
+            itemsPerPage: settings.upperItemsPerPage
+        )
 
         for legacyItem in legacyItems {
             guard let index = items.firstIndex(where: { $0.id == legacyItem.id }) else { continue }
             items[index].layer = .upper
             items[index].appBundleIdentifier = nil
-            items[index].order = nextUpperOrder
-            nextUpperOrder += 1
+            items[index].page = nextPosition.page
+            items[index].slot = nextPosition.slot
+
+            let nextLinearIndex = nextPosition.page * settings.upperItemsPerPage + nextPosition.slot + 1
+            nextPosition = GridPosition(
+                page: nextLinearIndex / settings.upperItemsPerPage,
+                slot: nextLinearIndex % settings.upperItemsPerPage
+            )
         }
 
-        normalizeOrders(save: false)
+        normalizePositions(save: false)
         saveItems()
         AppLogger.notice("已迁移未绑定下层项目到上层，数量=\(legacyItems.count)。", category: logCategory)
     }
@@ -234,6 +313,7 @@ class DataManager: ObservableObject {
             AppLogger.debug("分页数量文件不存在，跳过加载。", category: logCategory)
             return
         }
+
         do {
             let data = try Data(contentsOf: pageCountsFile)
             pageCounts = try JSONDecoder().decode([String: Int].self, from: data)
@@ -255,15 +335,9 @@ class DataManager: ObservableObject {
 
     func getPageCount(for layer: PanelLayer, appBundleIdentifier: String? = nil) -> Int {
         let scopeKey = pageScopeKey(layer: layer, appBundleIdentifier: appBundleIdentifier)
-        if let count = pageCounts[scopeKey] {
-            return count
-        }
-
-        if layer == .lower, let legacyCount = pageCounts[layer.rawValue] {
-            return legacyCount
-        }
-
-        return 1
+        let manualCount = pageCounts[scopeKey] ?? 1
+        let maxItemPage = getItems(for: layer, appBundleIdentifier: appBundleIdentifier).map(\.page).max() ?? 0
+        return max(1, manualCount, maxItemPage + 1)
     }
 
     func addPage(layer: PanelLayer, appBundleIdentifier: String? = nil) -> Int {
@@ -274,24 +348,19 @@ class DataManager: ObservableObject {
         return current
     }
 
-    func deletePage(layer: PanelLayer, page: Int, itemsPerPage: Int, appBundleIdentifier: String? = nil) {
-        let pageStartOrder = page * itemsPerPage
-        let pageEndOrder = pageStartOrder + itemsPerPage
+    func deletePage(layer: PanelLayer, page: Int, appBundleIdentifier: String? = nil) {
         let scopeKey = pageScopeKey(layer: layer, appBundleIdentifier: appBundleIdentifier)
 
         items.removeAll { item in
             item.layer == layer &&
-            matchesOrderScope(item: item, layer: layer, appBundleIdentifier: appBundleIdentifier) &&
-            item.order >= pageStartOrder &&
-            item.order < pageEndOrder
+            matchesScope(item: item, layer: layer, appBundleIdentifier: appBundleIdentifier) &&
+            item.page == page
         }
 
-        for index in items.indices {
-            if items[index].layer == layer &&
-                matchesOrderScope(item: items[index], layer: layer, appBundleIdentifier: appBundleIdentifier) &&
-                items[index].order >= pageEndOrder {
-                items[index].order -= itemsPerPage
-            }
+        for index in items.indices where items[index].layer == layer &&
+            matchesScope(item: items[index], layer: layer, appBundleIdentifier: appBundleIdentifier) &&
+            items[index].page > page {
+            items[index].page -= 1
         }
 
         pageGroups.removePage(scopeKey: scopeKey, page: page)
@@ -299,7 +368,7 @@ class DataManager: ObservableObject {
         let current = getPageCount(for: layer, appBundleIdentifier: appBundleIdentifier)
         pageCounts[scopeKey] = max(1, current - 1)
 
-        normalizeOrders(save: false)
+        normalizePositions(save: false)
         saveItems()
         savePageGroups()
         savePageCounts()
@@ -318,56 +387,84 @@ class DataManager: ObservableObject {
         }
     }
 
-    private func orderScopeKey(for item: PanelItem) -> String {
-        return pageScopeKey(layer: item.layer, appBundleIdentifier: item.appBundleIdentifier)
+    private func matchesScope(item: PanelItem, layer: PanelLayer, appBundleIdentifier: String?) -> Bool {
+        pageScopeKey(layer: item.layer, appBundleIdentifier: item.appBundleIdentifier) ==
+            pageScopeKey(layer: layer, appBundleIdentifier: appBundleIdentifier)
     }
 
-    private func matchesOrderScope(item: PanelItem, layer: PanelLayer, appBundleIdentifier: String?) -> Bool {
-        return orderScopeKey(for: item) == pageScopeKey(layer: layer, appBundleIdentifier: appBundleIdentifier)
+    private func sortByPosition(_ lhs: PanelItem, _ rhs: PanelItem) -> Bool {
+        if lhs.page != rhs.page {
+            return lhs.page < rhs.page
+        }
+
+        if lhs.slot != rhs.slot {
+            return lhs.slot < rhs.slot
+        }
+
+        return lhs.id.uuidString < rhs.id.uuidString
     }
 
-    private func normalizeOrders(save: Bool) {
-        var normalizedItems = items
+    private func normalizePositions(save: Bool) {
+        let settings = SettingsManager.shared.settings
         var didChange = false
-
-        let groupedIndices = Dictionary(grouping: normalizedItems.indices, by: { orderScopeKey(for: normalizedItems[$0]) })
+        let groupedIndices = Dictionary(grouping: items.indices, by: { pageScopeKey(layer: items[$0].layer, appBundleIdentifier: items[$0].appBundleIdentifier) })
 
         for indices in groupedIndices.values {
             let sortedIndices = indices.sorted { lhs, rhs in
-                let lhsItem = normalizedItems[lhs]
-                let rhsItem = normalizedItems[rhs]
-
-                if lhsItem.order == rhsItem.order {
-                    return lhsItem.id.uuidString < rhsItem.id.uuidString
-                }
-
-                return lhsItem.order < rhsItem.order
+                sortByPosition(items[lhs], items[rhs])
             }
-
-            var usedOrders = Set<Int>()
+            let layer = sortedIndices.first.map { items[$0].layer } ?? .upper
+            let itemsPerPage = max(1, settings.itemsPerPage(for: layer))
+            var usedPositions = Set<GridPosition>()
 
             for index in sortedIndices {
-                let originalOrder = normalizedItems[index].order
-                var resolvedOrder = max(0, originalOrder)
+                var position = GridPosition(
+                    page: max(0, items[index].page),
+                    slot: min(max(0, items[index].slot), itemsPerPage - 1)
+                )
 
-                while usedOrders.contains(resolvedOrder) {
-                    resolvedOrder += 1
+                while usedPositions.contains(position) {
+                    let nextLinearIndex = position.page * itemsPerPage + position.slot + 1
+                    position = GridPosition(page: nextLinearIndex / itemsPerPage, slot: nextLinearIndex % itemsPerPage)
                 }
 
-                usedOrders.insert(resolvedOrder)
+                usedPositions.insert(position)
 
-                if normalizedItems[index].order != resolvedOrder {
-                    normalizedItems[index].order = resolvedOrder
+                if items[index].page != position.page || items[index].slot != position.slot {
+                    items[index].page = position.page
+                    items[index].slot = position.slot
                     didChange = true
                 }
             }
         }
 
-        if didChange {
-            items = normalizedItems
-            if save {
-                saveItems()
-            }
+        if didChange && save {
+            saveItems()
         }
+    }
+
+    private func shiftItemsForwardForInsertion(to targetPosition: GridPosition, occupiedIndices: [GridPosition: Int], itemsPerPage: Int, in updatedItems: inout [PanelItem]) {
+        let targetLinearIndex = linearIndex(for: targetPosition, itemsPerPage: itemsPerPage)
+        var occupiedChain: [(linearIndex: Int, itemIndex: Int)] = []
+        var scanLinearIndex = targetLinearIndex
+
+        while let itemIndex = occupiedIndices[position(fromLinearIndex: scanLinearIndex, itemsPerPage: itemsPerPage)] {
+            occupiedChain.append((linearIndex: scanLinearIndex, itemIndex: itemIndex))
+            scanLinearIndex += 1
+        }
+
+        for entry in occupiedChain.reversed() {
+            let destinationPosition = position(fromLinearIndex: entry.linearIndex + 1, itemsPerPage: itemsPerPage)
+            updatedItems[entry.itemIndex].page = destinationPosition.page
+            updatedItems[entry.itemIndex].slot = destinationPosition.slot
+        }
+    }
+
+    private func linearIndex(for position: GridPosition, itemsPerPage: Int) -> Int {
+        max(0, position.page) * itemsPerPage + min(max(0, position.slot), itemsPerPage - 1)
+    }
+
+    private func position(fromLinearIndex linearIndex: Int, itemsPerPage: Int) -> GridPosition {
+        GridPosition(page: max(0, linearIndex) / itemsPerPage, slot: max(0, linearIndex) % itemsPerPage)
     }
 }

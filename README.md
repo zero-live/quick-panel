@@ -15,8 +15,8 @@ Quick Panel 是一个 macOS 快捷面板工具，定位为精简版 Quicker。�
 
 ## 当前版本
 
-- App 版本：`1.2.3`
-- Build：`6`
+- App 版本：`1.2.4`
+- Build：`7`
 - Bundle ID：`com.benxin.Quick-Panel`
 - 部署目标：`macOS 26.2+`
 - 技术栈：`SwiftUI + AppKit`

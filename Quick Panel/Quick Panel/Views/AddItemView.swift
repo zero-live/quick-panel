@@ -17,6 +17,7 @@ struct AddItemView: View {
     let presetAppBundleId: String?
     let presetAppName: String?
     let targetPage: Int
+    let targetSlot: Int?
 
     @State private var name = ""
     @State private var itemType: ItemType = .website
@@ -32,11 +33,12 @@ struct AddItemView: View {
     @State private var validationMessage: String?
     private let logCategory: AppLogCategory = .addItem
 
-    init(presetLayer: PanelLayer = .upper, presetAppBundleId: String? = nil, presetAppName: String? = nil, targetPage: Int = 0) {
+    init(presetLayer: PanelLayer = .upper, presetAppBundleId: String? = nil, presetAppName: String? = nil, targetPage: Int = 0, targetSlot: Int? = nil) {
         self.presetLayer = presetLayer
         self.presetAppBundleId = presetAppBundleId
         self.presetAppName = presetAppName
         self.targetPage = targetPage
+        self.targetSlot = targetSlot
     }
 
     var body: some View {
@@ -371,24 +373,14 @@ struct AddItemView: View {
         let bindingBundleId = layer == .lower ? selectedAppBundleId : nil
         let settings = SettingsManager.shared.settings
         let itemsPerPage = layer == .upper ? settings.upperItemsPerPage : settings.lowerItemsPerPage
-        let layerItems = DataManager.shared.getItems(for: layer, appBundleIdentifier: bindingBundleId)
-
-        let pageStartOrder = targetPage * itemsPerPage
-        let pageEndOrder = pageStartOrder + itemsPerPage
-
-        let usedOrders = Set(layerItems.filter { $0.order >= pageStartOrder && $0.order < pageEndOrder }.map(\.order))
-
-        var targetOrder = pageStartOrder
-        for order in pageStartOrder..<pageEndOrder {
-            if !usedOrders.contains(order) {
-                targetOrder = order
-                break
-            }
-        }
-
-        if usedOrders.count >= itemsPerPage {
-            targetOrder = pageEndOrder
-        }
+        let targetPosition = targetSlot.map { slot in
+            GridPosition(page: targetPage, slot: min(max(0, slot), itemsPerPage - 1))
+        } ?? DataManager.shared.nextAvailablePosition(
+            for: layer,
+            appBundleIdentifier: bindingBundleId,
+            preferredPage: targetPage,
+            itemsPerPage: itemsPerPage
+        )
 
         let newItem = PanelItem(
             name: name,
@@ -398,7 +390,8 @@ struct AddItemView: View {
             browserPath: browserPath,
             layer: layer,
             appBundleIdentifier: bindingBundleId,
-            order: targetOrder
+            page: targetPosition.page,
+            slot: targetPosition.slot
         )
 
         DataManager.shared.addItem(newItem)
@@ -754,8 +747,16 @@ struct EditItemView: View {
         let scopeChanged = updatedItem.layer != item.layer || updatedItem.appBundleIdentifier != item.appBundleIdentifier
 
         if scopeChanged {
-            let layerItems = DataManager.shared.getItems(for: layer, appBundleIdentifier: targetBundleId)
-            updatedItem.order = (layerItems.map(\.order).max() ?? -1) + 1
+            let settings = SettingsManager.shared.settings
+            let itemsPerPage = layer == .upper ? settings.upperItemsPerPage : settings.lowerItemsPerPage
+            let targetPosition = DataManager.shared.nextAvailablePosition(
+                for: layer,
+                appBundleIdentifier: targetBundleId,
+                preferredPage: 0,
+                itemsPerPage: itemsPerPage
+            )
+            updatedItem.page = targetPosition.page
+            updatedItem.slot = targetPosition.slot
         }
 
         DataManager.shared.updateItem(updatedItem)

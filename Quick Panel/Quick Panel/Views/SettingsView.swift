@@ -397,7 +397,12 @@ struct ItemManagementTab: View {
         return groupedItems.map { bundleIdentifier, items in
             LowerItemGroup(
                 bundleIdentifier: bundleIdentifier == LowerItemGroup.unboundIdentifier ? nil : bundleIdentifier,
-                items: items.sorted { $0.order < $1.order }
+                items: items.sorted {
+                    if $0.page != $1.page {
+                        return $0.page < $1.page
+                    }
+                    return $0.slot < $1.slot
+                }
             )
         }
         .sorted { lhs, rhs in

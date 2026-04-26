@@ -22,9 +22,10 @@ struct PanelItem: Identifiable, Codable {
     var browserPath: String?  // Optional: specific browser for websites
     var layer: PanelLayer  // Upper or lower layer
     var appBundleIdentifier: String?  // For lower layer: bind to specific app (e.g., "com.microsoft.edgemac")
-    var order: Int
+    var page: Int
+    var slot: Int
 
-    init(id: UUID = UUID(), name: String, type: ItemType, path: String, iconData: Data? = nil, browserPath: String? = nil, layer: PanelLayer = .upper, appBundleIdentifier: String? = nil, order: Int) {
+    init(id: UUID = UUID(), name: String, type: ItemType, path: String, iconData: Data? = nil, browserPath: String? = nil, layer: PanelLayer = .upper, appBundleIdentifier: String? = nil, page: Int, slot: Int) {
         self.id = id
         self.name = name
         self.type = type
@@ -33,7 +34,8 @@ struct PanelItem: Identifiable, Codable {
         self.browserPath = browserPath
         self.layer = layer
         self.appBundleIdentifier = appBundleIdentifier
-        self.order = order
+        self.page = page
+        self.slot = slot
     }
 
     // Helper to get icon synchronously

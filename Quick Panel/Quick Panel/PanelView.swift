@@ -5,13 +5,807 @@
 //  Created by Claude on 2025/12/28.
 //
 
+import Combine
 import SwiftUI
-import UniformTypeIdentifiers
+import AppKit
+
+enum PanelDropTargetKind: Hashable {
+    case slot
+    case pageIndicator
+}
+
+enum PanelDragEdgeDirection: Equatable {
+    case previous
+    case next
+}
+
+struct PanelDragEdgeHint: Equatable {
+    let context: PanelLayerDragContext
+    let direction: PanelDragEdgeDirection
+    let targetPage: Int
+}
+
+struct PanelDropTarget: Hashable {
+    let layer: PanelLayer
+    let appBundleIdentifier: String?
+    let page: Int
+    let slot: Int
+    let itemsPerPage: Int
+    let kind: PanelDropTargetKind
+}
+
+struct PanelLayerDragContext: Hashable {
+    let layer: PanelLayer
+    let appBundleIdentifier: String?
+}
+
+struct PanelLayerFrameInfo {
+    var frame: CGRect
+    var currentPage: Int
+    var pageCount: Int
+}
+
+struct PanelGridMetrics: Equatable {
+    let frame: CGRect
+    let columns: Int
+    let rows: Int
+    let cellSize: CGSize
+    let spacing: CGFloat
+
+    var itemsPerPage: Int {
+        columns * rows
+    }
+
+    var contentSize: CGSize {
+        CGSize(
+            width: CGFloat(columns) * cellSize.width + CGFloat(max(0, columns - 1)) * spacing,
+            height: CGFloat(rows) * cellSize.height + CGFloat(max(0, rows - 1)) * spacing
+        )
+    }
+
+    func localFrame(for slot: Int) -> CGRect {
+        guard slot >= 0, slot < itemsPerPage, columns > 0 else { return .zero }
+
+        let column = slot % columns
+        let row = slot / columns
+        return CGRect(
+            x: CGFloat(column) * (cellSize.width + spacing),
+            y: CGFloat(row) * (cellSize.height + spacing),
+            width: cellSize.width,
+            height: cellSize.height
+        )
+    }
+
+    func localPosition(for slot: Int) -> CGPoint {
+        let slotFrame = localFrame(for: slot)
+        return CGPoint(x: slotFrame.midX, y: slotFrame.midY)
+    }
+
+    func frame(for slot: Int) -> CGRect {
+        localFrame(for: slot).offsetBy(dx: frame.minX, dy: frame.minY)
+    }
+
+    func slot(at point: CGPoint, hitSlop: CGFloat) -> Int? {
+        guard frame.insetBy(dx: -hitSlop, dy: -hitSlop).contains(point) else {
+            return nil
+        }
+
+        let localPoint = CGPoint(x: point.x - frame.minX, y: point.y - frame.minY)
+        var nearestSlot: Int?
+        var nearestDistance = CGFloat.greatestFiniteMagnitude
+
+        for slot in 0..<itemsPerPage {
+            let slotFrame = localFrame(for: slot).insetBy(dx: -hitSlop, dy: -hitSlop)
+            guard slotFrame.contains(localPoint) else { continue }
+
+            let center = localPosition(for: slot)
+            let deltaX = localPoint.x - center.x
+            let deltaY = localPoint.y - center.y
+            let distance = deltaX * deltaX + deltaY * deltaY
+            if distance < nearestDistance {
+                nearestDistance = distance
+                nearestSlot = slot
+            }
+        }
+
+        return nearestSlot
+    }
+}
+
+struct PanelDragState: Equatable {
+    let itemId: UUID
+    let layer: PanelLayer
+    let appBundleIdentifier: String?
+}
+
+struct PanelDragSession {
+    let item: PanelItem
+    let state: PanelDragState
+    var location: CGPoint
+}
+
+@MainActor
+final class PanelDragManager: ObservableObject {
+    static let shared = PanelDragManager()
+
+    @Published private(set) var session: PanelDragSession?
+    @Published private(set) var currentTargetFrame: CGRect?
+    @Published private(set) var edgeHint: PanelDragEdgeHint?
+    @Published private(set) var previewItemsByContext: [PanelLayerDragContext: [PanelItem]] = [:]
+
+    private var targetFrames: [PanelDropTarget: CGRect] = [:]
+    private var layerFrames: [PanelLayerDragContext: PanelLayerFrameInfo] = [:]
+    private var gridMetricsByContext: [PanelLayerDragContext: PanelGridMetrics] = [:]
+    private var baseItemsByContext: [PanelLayerDragContext: [PanelItem]] = [:]
+    private var currentTarget: PanelDropTarget?
+    private var localMouseMonitor: Any?
+    private var pendingPageSwitch: DispatchWorkItem?
+    private var pendingPageSwitchTarget: PanelDropTarget?
+    private var edgeSwitchLock: PanelDragEdgeDirection?
+    private weak var dragWindow: NSWindow?
+
+    private let edgeSwitchInset: CGFloat = 76
+    private let edgeSwitchOuterTolerance: CGFloat = 28
+    private let edgeSwitchVerticalTolerance: CGFloat = 10
+    private let targetHitSlop: CGFloat = 8
+    private let edgeSwitchReleaseInset: CGFloat = 112
+    private let pageSwitchDelay: TimeInterval = 0.38
+
+    private init() {}
+
+    func beginDrag(item: PanelItem, appBundleIdentifier: String?, at location: CGPoint) {
+        let state = PanelDragState(
+            itemId: item.id,
+            layer: item.layer,
+            appBundleIdentifier: appBundleIdentifier
+        )
+        session = PanelDragSession(item: item, state: state, location: location)
+        currentTarget = nil
+        currentTargetFrame = nil
+        edgeHint = nil
+        edgeSwitchLock = nil
+        dragWindow = NSApp.windows.first { $0.isVisible && $0 is NSPanel } ?? NSApp.keyWindow
+        installLocalMouseMonitor()
+        updateDrag(at: location)
+    }
+
+    func updateDrag(at point: CGPoint) {
+        guard var session else { return }
+        session.location = point
+        self.session = session
+
+        let target = dropTarget(at: point, for: session)
+        let targetFrame = target.flatMap { targetFrames[$0] }
+
+        if target != currentTarget || targetFrame != currentTargetFrame {
+            currentTarget = target
+            currentTargetFrame = targetFrame
+            handleTargetChange(target)
+        }
+
+        updatePreviewLayout(for: target)
+        scheduleEdgePageSwitchIfNeeded(at: point)
+    }
+
+    func endDrag() {
+        guard let session else {
+            reset()
+            return
+        }
+
+        defer { reset() }
+
+        guard let currentTarget,
+              currentTarget.layer == session.state.layer,
+              currentTarget.appBundleIdentifier == session.state.appBundleIdentifier else {
+            return
+        }
+
+        let context = PanelLayerDragContext(
+            layer: currentTarget.layer,
+            appBundleIdentifier: currentTarget.appBundleIdentifier
+        )
+
+        if let previewItems = previewItemsByContext[context] {
+            DataManager.shared.replaceItems(
+                for: currentTarget.layer,
+                appBundleIdentifier: currentTarget.appBundleIdentifier,
+                with: previewItems
+            )
+        } else {
+            DataManager.shared.moveItem(
+                id: session.state.itemId,
+                layer: currentTarget.layer,
+                appBundleIdentifier: currentTarget.appBundleIdentifier,
+                toPage: currentTarget.page,
+                slotIndex: currentTarget.slot,
+                itemsPerPage: currentTarget.itemsPerPage
+            )
+        }
+    }
+
+    func cancelDrag() {
+        reset()
+    }
+
+    func registerTarget(_ target: PanelDropTarget, frame: CGRect) {
+        guard !frame.isEmpty else { return }
+        targetFrames[target] = frame
+    }
+
+    func registerLayerFrame(context: PanelLayerDragContext, frame: CGRect, currentPage: Int, pageCount: Int) {
+        guard !frame.isEmpty else { return }
+        layerFrames[context] = PanelLayerFrameInfo(
+            frame: frame,
+            currentPage: currentPage,
+            pageCount: pageCount
+        )
+    }
+
+    func registerGridMetrics(context: PanelLayerDragContext, metrics: PanelGridMetrics) {
+        guard !metrics.frame.isEmpty else { return }
+        gridMetricsByContext[context] = metrics
+    }
+
+    func unregisterGridMetrics(context: PanelLayerDragContext) {
+        gridMetricsByContext.removeValue(forKey: context)
+    }
+
+    func displayedItems(for context: PanelLayerDragContext, sourceItems: [PanelItem]) -> [PanelItem] {
+        previewItemsByContext[context] ?? sourceItems
+    }
+
+    func unregisterLayerFrame(context: PanelLayerDragContext) {
+        layerFrames.removeValue(forKey: context)
+    }
+
+    func unregisterTarget(_ target: PanelDropTarget) {
+        targetFrames.removeValue(forKey: target)
+    }
+
+    func unregisterSlotTargets(layer: PanelLayer, appBundleIdentifier: String?) {
+        targetFrames = targetFrames.filter { target, _ in
+            !(target.layer == layer &&
+              target.appBundleIdentifier == appBundleIdentifier &&
+              target.kind == .slot)
+        }
+
+        if currentTarget?.layer == layer,
+           currentTarget?.appBundleIdentifier == appBundleIdentifier,
+           currentTarget?.kind == .slot {
+            currentTarget = nil
+            currentTargetFrame = nil
+        }
+    }
+
+    func isHovered(_ target: PanelDropTarget) -> Bool {
+        currentTarget == target
+    }
+
+    func isDragging(in context: PanelLayerDragContext) -> Bool {
+        guard let session else { return false }
+        return session.state.layer == context.layer &&
+            session.state.appBundleIdentifier == context.appBundleIdentifier
+    }
+
+    private func installLocalMouseMonitor() {
+        guard localMouseMonitor == nil else { return }
+
+        localMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDragged, .leftMouseUp]) { [weak self] event in
+            guard let self else { return event }
+
+            Task { @MainActor in
+                guard self.session != nil else { return }
+
+                switch event.type {
+                case .leftMouseDragged:
+                    self.updateDrag(at: self.localPoint(from: event))
+                case .leftMouseUp:
+                    self.updateDrag(at: self.localPoint(from: event))
+                    self.endDrag()
+                default:
+                    break
+                }
+            }
+
+            return event
+        }
+    }
+
+    private func localPoint(from event: NSEvent) -> CGPoint {
+        let window = dragWindow ?? event.window ?? NSApp.keyWindow
+        guard let window else { return .zero }
+
+        let screenPoint = NSEvent.mouseLocation
+        let frame = window.frame
+        return CGPoint(
+            x: screenPoint.x - frame.minX,
+            y: frame.maxY - screenPoint.y
+        )
+    }
+
+    private func handleTargetChange(_ target: PanelDropTarget?) {
+        guard let target, target.kind == .pageIndicator else { return }
+        requestPageSwitch(target)
+    }
+
+    private func dropTarget(at point: CGPoint, for session: PanelDragSession) -> PanelDropTarget? {
+        let context = PanelLayerDragContext(
+            layer: session.state.layer,
+            appBundleIdentifier: session.state.appBundleIdentifier
+        )
+        let currentPage = layerFrames[context]?.currentPage
+
+        if let metrics = gridMetricsByContext[context],
+           let currentPage,
+           let slot = metrics.slot(at: point, hitSlop: targetHitSlop) {
+            return PanelDropTarget(
+                layer: context.layer,
+                appBundleIdentifier: context.appBundleIdentifier,
+                page: currentPage,
+                slot: slot,
+                itemsPerPage: metrics.itemsPerPage,
+                kind: .slot
+            )
+        }
+
+        let candidates = targetFrames.compactMap { target, frame -> (target: PanelDropTarget, frame: CGRect, exactHit: Bool, distance: CGFloat)? in
+            guard target.layer == session.state.layer,
+                  target.appBundleIdentifier == session.state.appBundleIdentifier else {
+                return nil
+            }
+
+            let expandedFrame = frame.insetBy(dx: -targetHitSlop, dy: -targetHitSlop)
+            guard expandedFrame.contains(point) else { return nil }
+
+            let deltaX = point.x - frame.midX
+            let deltaY = point.y - frame.midY
+            return (
+                target: target,
+                frame: frame,
+                exactHit: frame.contains(point),
+                distance: deltaX * deltaX + deltaY * deltaY
+            )
+        }
+
+        return candidates.sorted { lhs, rhs in
+            if lhs.target.kind != rhs.target.kind {
+                return lhs.target.kind == .slot
+            }
+
+            if let currentPage, lhs.target.page != rhs.target.page {
+                if lhs.target.page == currentPage { return true }
+                if rhs.target.page == currentPage { return false }
+            }
+
+            if lhs.exactHit != rhs.exactHit {
+                return lhs.exactHit
+            }
+
+            return lhs.distance < rhs.distance
+        }
+        .first?
+        .target
+    }
+
+    private func updatePreviewLayout(for target: PanelDropTarget?) {
+        guard let session,
+              let target,
+              target.kind == .slot,
+              target.layer == session.state.layer,
+              target.appBundleIdentifier == session.state.appBundleIdentifier else {
+            return
+        }
+
+        let context = PanelLayerDragContext(
+            layer: session.state.layer,
+            appBundleIdentifier: session.state.appBundleIdentifier
+        )
+
+        let baseItems: [PanelItem]
+        if let cachedItems = baseItemsByContext[context] {
+            baseItems = cachedItems
+        } else {
+            let scopedItems = DataManager.shared.getItems(for: context.layer, appBundleIdentifier: context.appBundleIdentifier)
+            baseItemsByContext[context] = scopedItems
+            baseItems = scopedItems
+        }
+
+        let previewItems = previewLayoutItems(
+            baseItems,
+            movingItemId: session.state.itemId,
+            targetPage: target.page,
+            targetSlot: target.slot,
+            itemsPerPage: target.itemsPerPage
+        )
+
+        if previewItemsByContext[context]?.map(layoutSignature) != previewItems.map(layoutSignature) {
+            previewItemsByContext[context] = previewItems
+        }
+    }
+
+    private func previewLayoutItems(_ sourceItems: [PanelItem], movingItemId: UUID, targetPage: Int, targetSlot: Int, itemsPerPage: Int) -> [PanelItem] {
+        guard itemsPerPage > 0,
+              let movingItem = sourceItems.first(where: { $0.id == movingItemId }) else {
+            return sourceItems
+        }
+
+        let targetLinearIndex = max(0, targetPage) * itemsPerPage + min(max(0, targetSlot), itemsPerPage - 1)
+        var resultItems = sourceItems
+        var occupiedIndexes: [Int: Int] = [:]
+
+        for index in resultItems.indices where resultItems[index].id != movingItemId {
+            let linearIndex = max(0, resultItems[index].page) * itemsPerPage + min(max(0, resultItems[index].slot), itemsPerPage - 1)
+            occupiedIndexes[linearIndex] = index
+        }
+
+        if occupiedIndexes[targetLinearIndex] != nil {
+            var occupiedChain: [(linearIndex: Int, itemIndex: Int)] = []
+            var scanLinearIndex = targetLinearIndex
+
+            while let itemIndex = occupiedIndexes[scanLinearIndex] {
+                occupiedChain.append((linearIndex: scanLinearIndex, itemIndex: itemIndex))
+                scanLinearIndex += 1
+            }
+
+            for entry in occupiedChain.reversed() {
+                let destinationLinearIndex = entry.linearIndex + 1
+                resultItems[entry.itemIndex].page = destinationLinearIndex / itemsPerPage
+                resultItems[entry.itemIndex].slot = destinationLinearIndex % itemsPerPage
+            }
+        }
+
+        guard let movingIndex = resultItems.firstIndex(where: { $0.id == movingItem.id }) else {
+            return sourceItems
+        }
+
+        resultItems[movingIndex].page = targetLinearIndex / itemsPerPage
+        resultItems[movingIndex].slot = targetLinearIndex % itemsPerPage
+        return resultItems
+    }
+
+    private func layoutSignature(for item: PanelItem) -> String {
+        "\(item.id)-\(item.page)-\(item.slot)"
+    }
+
+    private func scheduleEdgePageSwitchIfNeeded(at point: CGPoint) {
+        guard let session else {
+            edgeHint = nil
+            cancelPendingPageSwitch()
+            return
+        }
+
+        let context = PanelLayerDragContext(
+            layer: session.state.layer,
+            appBundleIdentifier: session.state.appBundleIdentifier
+        )
+        guard let info = layerFrames[context] else {
+            edgeHint = nil
+            edgeSwitchLock = nil
+            cancelPendingPageSwitch()
+            return
+        }
+
+        let activeFrame = info.frame.insetBy(dx: -edgeSwitchOuterTolerance, dy: -edgeSwitchVerticalTolerance)
+        guard activeFrame.contains(point) else {
+            edgeHint = nil
+            edgeSwitchLock = nil
+            cancelPendingPageSwitch()
+            return
+        }
+
+        releaseEdgeSwitchLockIfNeeded(at: point, in: info.frame)
+
+        let targetPage: Int?
+        let direction: PanelDragEdgeDirection?
+        if point.x <= info.frame.minX + edgeSwitchInset, info.currentPage > 0 {
+            targetPage = info.currentPage - 1
+            direction = .previous
+        } else if point.x >= info.frame.maxX - edgeSwitchInset, info.currentPage < info.pageCount - 1 {
+            targetPage = info.currentPage + 1
+            direction = .next
+        } else {
+            targetPage = nil
+            direction = nil
+        }
+
+        if let edgeSwitchLock, edgeSwitchLock == direction {
+            edgeHint = nil
+            cancelPendingPageSwitch()
+            return
+        }
+
+        guard let targetPage, let direction else {
+            edgeHint = nil
+            cancelPendingPageSwitch()
+            return
+        }
+
+        edgeHint = PanelDragEdgeHint(context: context, direction: direction, targetPage: targetPage)
+
+        let target = PanelDropTarget(
+            layer: context.layer,
+            appBundleIdentifier: context.appBundleIdentifier,
+            page: targetPage,
+            slot: 0,
+            itemsPerPage: SettingsManager.shared.settings.itemsPerPage(for: context.layer),
+            kind: .pageIndicator
+        )
+        schedulePageSwitch(target)
+    }
+
+    private func requestPageSwitch(_ target: PanelDropTarget) {
+        edgeHint = nil
+        cancelPendingPageSwitch()
+        postPageSwitch(target)
+    }
+
+    private func schedulePageSwitch(_ target: PanelDropTarget) {
+        guard pendingPageSwitchTarget != target else { return }
+
+        cancelPendingPageSwitch()
+        pendingPageSwitchTarget = target
+
+        let workItem = DispatchWorkItem { [weak self] in
+            Task { @MainActor in
+                guard let self,
+                      self.pendingPageSwitchTarget == target,
+                      self.session != nil else {
+                    return
+                }
+                self.postPageSwitch(target)
+                self.pendingPageSwitchTarget = nil
+                self.pendingPageSwitch = nil
+            }
+        }
+        pendingPageSwitch = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + pageSwitchDelay, execute: workItem)
+    }
+
+    private func postPageSwitch(_ target: PanelDropTarget) {
+        currentTarget = target
+        currentTargetFrame = targetFrames[target]
+        edgeHint = nil
+        edgeSwitchLock = target.slot == 0 ? edgeDirection(for: target) : nil
+
+        let context = PanelLayerDragContext(
+            layer: target.layer,
+            appBundleIdentifier: target.appBundleIdentifier
+        )
+        if var frameInfo = layerFrames[context] {
+            frameInfo.currentPage = target.page
+            layerFrames[context] = frameInfo
+        }
+
+        NotificationCenter.default.post(
+            name: .panelDragRequestPageSwitch,
+            object: nil,
+            userInfo: [
+                "layer": target.layer.rawValue,
+                "appBundleIdentifier": target.appBundleIdentifier as Any,
+                "page": target.page
+            ]
+        )
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let session = self.session else { return }
+            self.updateDrag(at: session.location)
+        }
+    }
+
+    private func releaseEdgeSwitchLockIfNeeded(at point: CGPoint, in frame: CGRect) {
+        guard let edgeSwitchLock else { return }
+
+        switch edgeSwitchLock {
+        case .previous:
+            if point.x > frame.minX + edgeSwitchReleaseInset {
+                self.edgeSwitchLock = nil
+            }
+        case .next:
+            if point.x < frame.maxX - edgeSwitchReleaseInset {
+                self.edgeSwitchLock = nil
+            }
+        }
+    }
+
+    private func edgeDirection(for target: PanelDropTarget) -> PanelDragEdgeDirection? {
+        let context = PanelLayerDragContext(
+            layer: target.layer,
+            appBundleIdentifier: target.appBundleIdentifier
+        )
+        guard let info = layerFrames[context] else { return nil }
+
+        if target.page > info.currentPage {
+            return .next
+        }
+        if target.page < info.currentPage {
+            return .previous
+        }
+        return nil
+    }
+
+    private func cancelPendingPageSwitch() {
+        pendingPageSwitch?.cancel()
+        pendingPageSwitch = nil
+        pendingPageSwitchTarget = nil
+    }
+
+    private func reset() {
+        session = nil
+        currentTarget = nil
+        currentTargetFrame = nil
+        edgeHint = nil
+        previewItemsByContext = [:]
+        baseItemsByContext = [:]
+        edgeSwitchLock = nil
+        cancelPendingPageSwitch()
+
+        if let localMouseMonitor {
+            NSEvent.removeMonitor(localMouseMonitor)
+            self.localMouseMonitor = nil
+        }
+
+        dragWindow = nil
+    }
+}
+
+@MainActor
+final class PanelGridDragVisualState: ObservableObject {
+    static let shared = PanelGridDragVisualState()
+
+    @Published private(set) var activeContext: PanelLayerDragContext?
+    @Published private(set) var edgeHint: PanelDragEdgeHint?
+
+    private init() {}
+
+    func begin(context: PanelLayerDragContext) {
+        guard activeContext != context else { return }
+        activeContext = context
+    }
+
+    func updateEdgeHint(_ hint: PanelDragEdgeHint?) {
+        guard edgeHint != hint else { return }
+        edgeHint = hint
+    }
+
+    func end() {
+        guard activeContext != nil || edgeHint != nil else { return }
+        activeContext = nil
+        edgeHint = nil
+    }
+
+    func isDragging(in context: PanelLayerDragContext) -> Bool {
+        activeContext == context
+    }
+}
+
+struct PanelDropTargetFrameReader: View {
+    let target: PanelDropTarget
+
+    var body: some View {
+        GeometryReader { proxy in
+            Color.clear
+                .onAppear {
+                    register(proxy)
+                }
+                .onChange(of: proxy.frame(in: .named("panelDragSpace"))) { _, _ in
+                    register(proxy)
+                }
+                .onChange(of: target) { oldValue, _ in
+                    PanelDragManager.shared.unregisterTarget(oldValue)
+                    register(proxy)
+                }
+                .onDisappear {
+                    PanelDragManager.shared.unregisterTarget(target)
+                }
+        }
+    }
+
+    private func register(_ proxy: GeometryProxy) {
+        PanelDragManager.shared.registerTarget(target, frame: proxy.frame(in: .named("panelDragSpace")))
+    }
+}
+
+struct PanelLayerFrameReader: View {
+    let context: PanelLayerDragContext
+    let currentPage: Int
+    let pageCount: Int
+
+    var body: some View {
+        GeometryReader { proxy in
+            Color.clear
+                .onAppear {
+                    register(proxy)
+                }
+                .onChange(of: proxy.frame(in: .named("panelDragSpace"))) { _, _ in
+                    register(proxy)
+                }
+                .onChange(of: currentPage) { _, _ in
+                    register(proxy)
+                }
+                .onChange(of: pageCount) { _, _ in
+                    register(proxy)
+                }
+                .onChange(of: context) { oldValue, _ in
+                    PanelDragManager.shared.unregisterLayerFrame(context: oldValue)
+                    register(proxy)
+                }
+                .onDisappear {
+                    PanelDragManager.shared.unregisterLayerFrame(context: context)
+                }
+        }
+    }
+
+    private func register(_ proxy: GeometryProxy) {
+        PanelDragManager.shared.registerLayerFrame(
+            context: context,
+            frame: proxy.frame(in: .named("panelDragSpace")),
+            currentPage: currentPage,
+            pageCount: pageCount
+        )
+    }
+}
+
+struct PanelGridMetricsReader: View {
+    let context: PanelLayerDragContext
+    let columns: Int
+    let rows: Int
+    let cellSize: CGSize
+    let spacing: CGFloat
+
+    var body: some View {
+        GeometryReader { proxy in
+            Color.clear
+                .onAppear {
+                    register(proxy)
+                }
+                .onChange(of: proxy.frame(in: .named("panelDragSpace"))) { _, _ in
+                    register(proxy)
+                }
+                .onChange(of: columns) { _, _ in
+                    register(proxy)
+                }
+                .onChange(of: rows) { _, _ in
+                    register(proxy)
+                }
+                .onChange(of: cellSize.width) { _, _ in
+                    register(proxy)
+                }
+                .onChange(of: cellSize.height) { _, _ in
+                    register(proxy)
+                }
+                .onChange(of: spacing) { _, _ in
+                    register(proxy)
+                }
+                .onChange(of: context) { oldValue, _ in
+                    PanelDragManager.shared.unregisterGridMetrics(context: oldValue)
+                    register(proxy)
+                }
+                .onDisappear {
+                    PanelDragManager.shared.unregisterGridMetrics(context: context)
+                }
+        }
+    }
+
+    private func register(_ proxy: GeometryProxy) {
+        PanelDragManager.shared.registerGridMetrics(
+            context: context,
+            metrics: PanelGridMetrics(
+                frame: proxy.frame(in: .named("panelDragSpace")),
+                columns: columns,
+                rows: rows,
+                cellSize: cellSize,
+                spacing: spacing
+            )
+        )
+    }
+}
 
 struct PanelView: View {
     @ObservedObject var dataManager = DataManager.shared
     @ObservedObject var settingsManager = SettingsManager.shared
     @ObservedObject var contextDetector = ContextDetector.shared
+    @ObservedObject private var dragManager = PanelDragManager.shared
     @State private var upperPage = 0
     @State private var lowerPagesByApp: [String: Int] = SettingsManager.shared.settings.lowerPageMemory
 
@@ -87,45 +881,55 @@ struct PanelView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Drag handle at the top
-            DragHandleView()
-                .frame(height: 24)
+        ZStack(alignment: .topLeading) {
+            VStack(spacing: 0) {
+                // Drag handle at the top
+                DragHandleView()
+                    .frame(height: 24)
 
-            // Upper grid - common items
-            LayerGridView(
-                items: upperItems,
-                page: $upperPage,
-                itemsPerPage: upperItemsPerPage,
-                layer: .upper,
-                pageScopeAppBundleId: nil,
-                currentAppBundleId: nil,
-                currentAppName: nil,
-                title: "常用功能",
-                columns: upperColumns,
-                emptyMessage: nil
-            )
+                // Upper grid - common items
+                LayerGridView(
+                    items: upperItems,
+                    page: $upperPage,
+                    itemsPerPage: upperItemsPerPage,
+                    layer: .upper,
+                    pageScopeAppBundleId: nil,
+                    currentAppBundleId: nil,
+                    currentAppName: nil,
+                    title: "常用功能",
+                    columns: upperColumns,
+                    emptyMessage: nil
+                )
 
-            // Divider
-            Divider()
-                .padding(.horizontal, 20)
-                .padding(.vertical, 6)
+                // Divider
+                Divider()
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 6)
 
-            // Lower grid - current app items
-            LayerGridView(
-                items: lowerItems,
-                page: lowerPageBinding,
-                itemsPerPage: lowerItemsPerPage,
-                layer: .lower,
-                pageScopeAppBundleId: currentAppBundleId,
-                currentAppBundleId: currentAppBundleId,
-                currentAppName: currentAppName,
-                title: currentAppName,
-                columns: lowerColumns,
-                emptyMessage: lowerLayerEmptyMessage
-            )
-            .id("\(currentAppBundleId ?? "none")-\(lowerItems.count)")
+                // Lower grid - current app items
+                LayerGridView(
+                    items: lowerItems,
+                    page: lowerPageBinding,
+                    itemsPerPage: lowerItemsPerPage,
+                    layer: .lower,
+                    pageScopeAppBundleId: currentAppBundleId,
+                    currentAppBundleId: currentAppBundleId,
+                    currentAppName: currentAppName,
+                    title: currentAppName,
+                    columns: lowerColumns,
+                    emptyMessage: lowerLayerEmptyMessage
+                )
+                .id("\(currentAppBundleId ?? "none")-\(lowerItems.count)")
+            }
+
+            if let session = dragManager.session {
+                DragGhostItemView(item: session.item)
+                    .position(session.location)
+                    .allowsHitTesting(false)
+                    .zIndex(1000)
+            }
         }
+        .coordinateSpace(name: "panelDragSpace")
         .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18))
         .onAppear {
             lowerPagesByApp = settingsManager.settings.lowerPageMemory
@@ -183,6 +987,20 @@ struct PanelView: View {
     }
 }
 
+// MARK: - Drag Ghost Item
+struct DragGhostItemView: View {
+    let item: PanelItem
+
+    var body: some View {
+        let settings = SettingsManager.shared.settings
+        ItemContentView(item: item, isHovered: true)
+            .frame(width: settings.cellWidth, height: settings.cellHeight)
+            .scaleEffect(1.08)
+            .shadow(color: Color.black.opacity(0.24), radius: 14, x: 0, y: 8)
+            .allowsHitTesting(false)
+    }
+}
+
 // MARK: - Layer Grid View
 struct LayerGridView: View {
     let items: [PanelItem]
@@ -197,11 +1015,44 @@ struct LayerGridView: View {
     let emptyMessage: String?
 
     @ObservedObject private var dataManager = DataManager.shared
+    @ObservedObject private var settingsManager = SettingsManager.shared
+    @ObservedObject private var dragManager = PanelDragManager.shared
     @State private var showingGroupNameEditor = false
     @State private var editingGroupName = ""
 
     private var layerHeight: CGFloat {
         SettingsManager.shared.settings.layerHeight(for: layer)
+    }
+
+    private var layerDragContext: PanelLayerDragContext {
+        PanelLayerDragContext(layer: layer, appBundleIdentifier: pageScopeAppBundleId)
+    }
+
+    private var gridColumns: Int {
+        settingsManager.settings.gridColumns(for: layer)
+    }
+
+    private var gridRows: Int {
+        settingsManager.settings.gridRows(for: layer)
+    }
+
+    private var cellSize: CGSize {
+        CGSize(width: settingsManager.settings.cellWidth, height: settingsManager.settings.cellHeight)
+    }
+
+    private var gridSpacing: CGFloat {
+        settingsManager.settings.itemSpacing
+    }
+
+    private var gridContentSize: CGSize {
+        CGSize(
+            width: CGFloat(gridColumns) * cellSize.width + CGFloat(max(0, gridColumns - 1)) * gridSpacing,
+            height: CGFloat(gridRows) * cellSize.height + CGFloat(max(0, gridRows - 1)) * gridSpacing
+        )
+    }
+
+    private var displayItems: [PanelItem] {
+        dragManager.displayedItems(for: layerDragContext, sourceItems: items)
     }
 
     var pageCount: Int {
@@ -216,10 +1067,23 @@ struct LayerGridView: View {
     }
 
     var currentPageItems: [PanelItem] {
-        let startOrder = page * itemsPerPage
-        let endOrder = startOrder + itemsPerPage
-        return items.filter { $0.order >= startOrder && $0.order < endOrder }
-            .sorted { $0.order < $1.order }
+        displayItems
+            .filter { $0.page == page }
+            .sorted {
+                if $0.slot == $1.slot {
+                    return $0.id.uuidString < $1.id.uuidString
+                }
+                return $0.slot < $1.slot
+            }
+    }
+
+    private var currentPageItemsBySlot: [Int: PanelItem] {
+        return Dictionary(
+            uniqueKeysWithValues: currentPageItems.compactMap { item in
+                guard item.slot >= 0, item.slot < itemsPerPage else { return nil }
+                return (item.slot, item)
+            }
+        )
     }
 
     // Always show 12 slots
@@ -249,7 +1113,6 @@ struct LayerGridView: View {
                             dataManager.deletePage(
                                 layer: layer,
                                 page: deletingPage,
-                                itemsPerPage: itemsPerPage,
                                 appBundleIdentifier: pageScopeAppBundleId
                             )
                             withAnimation {
@@ -347,26 +1210,23 @@ struct LayerGridView: View {
                 validatePage()
             }
 
-            LazyVGrid(columns: columns, spacing: 16) {
-                // Show items for current page
-                ForEach(currentPageItems) { item in
-                    ItemButton(item: item, layer: layer)
-                        .transition(.scale.combined(with: .opacity))
-                }
-
-                // Fill remaining slots with clickable empty placeholders
-                ForEach(currentPageItems.count..<slotsToShow, id: \.self) { index in
-                    EmptySlotView(
-                        layer: layer,
-                        currentAppBundleId: currentAppBundleId,
-                        currentAppName: currentAppName,
-                        page: page
-                    )
-                }
-            }
+            DesktopGridView(
+                itemsBySlot: currentPageItemsBySlot,
+                layer: layer,
+                pageScopeAppBundleId: pageScopeAppBundleId,
+                currentAppBundleId: currentAppBundleId,
+                currentAppName: currentAppName,
+                page: page,
+                pageCount: pageCount,
+                columns: gridColumns,
+                rows: gridRows,
+                cellSize: cellSize,
+                spacing: gridSpacing
+            )
+            .frame(width: gridContentSize.width, height: gridContentSize.height)
             .padding(.horizontal, 20)
             .padding(.bottom, 6)
-            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: currentPageItems.map { $0.id })
+            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: currentPageItems.map { "\($0.id)-\($0.page)-\($0.slot)" })
 
             if let emptyMessage, currentPageItems.isEmpty {
                 EmptyStateHintView(message: emptyMessage)
@@ -377,9 +1237,14 @@ struct LayerGridView: View {
             if pageCount > 1 {
                 HStack(spacing: 6) {
                     ForEach(0..<pageCount, id: \.self) { index in
-                        Circle()
-                            .fill(page == index ? Color.accentColor : Color.secondary.opacity(0.3))
-                            .frame(width: 6, height: 6)
+                        PageIndicatorDot(
+                            index: index,
+                            currentPage: $page,
+                            layer: layer,
+                            pageScopeAppBundleId: pageScopeAppBundleId,
+                            itemsPerPage: itemsPerPage
+                        )
+                        .frame(width: 14, height: 14)
                             .onTapGesture {
                                 withAnimation {
                                     page = index
@@ -392,6 +1257,47 @@ struct LayerGridView: View {
         }
         .frame(height: layerHeight, alignment: .top)
         .clipped()
+        .overlay {
+            LayerEdgePageSwitchHint(
+                context: layerDragContext,
+                currentPage: page,
+                pageCount: pageCount
+            )
+            .allowsHitTesting(false)
+        }
+        .background(PanelLayerFrameReader(
+            context: layerDragContext,
+            currentPage: page,
+            pageCount: pageCount
+        ))
+        .onChange(of: page) { _, _ in
+            PanelDragManager.shared.unregisterSlotTargets(layer: layer, appBundleIdentifier: pageScopeAppBundleId)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .panelDragRequestPageSwitch)) { notification in
+            guard let userInfo = notification.userInfo,
+                  let layerString = userInfo["layer"] as? String,
+                  layerString == layer.rawValue,
+                  let requestedPage = userInfo["page"] as? Int else {
+                return
+            }
+
+            let requestedBundleId = userInfo["appBundleIdentifier"] as? String
+            guard requestedBundleId == pageScopeAppBundleId,
+                  requestedPage >= 0,
+                  requestedPage < pageCount,
+                  requestedPage != page else {
+                return
+            }
+
+            PanelDragManager.shared.unregisterSlotTargets(layer: layer, appBundleIdentifier: pageScopeAppBundleId)
+            withAnimation(.easeInOut(duration: 0.18)) {
+                page = requestedPage
+            }
+        }
+        .onDisappear {
+            PanelDragManager.shared.unregisterSlotTargets(layer: layer, appBundleIdentifier: pageScopeAppBundleId)
+            PanelDragManager.shared.unregisterLayerFrame(context: layerDragContext)
+        }
     }
 
     private func beginEditingGroupName() {
@@ -411,22 +1317,795 @@ struct LayerGridView: View {
     }
 }
 
+// MARK: - Desktop Grid View
+struct DesktopGridView: NSViewRepresentable {
+    let itemsBySlot: [Int: PanelItem]
+    let layer: PanelLayer
+    let pageScopeAppBundleId: String?
+    let currentAppBundleId: String?
+    let currentAppName: String?
+    let page: Int
+    let pageCount: Int
+    let columns: Int
+    let rows: Int
+    let cellSize: CGSize
+    let spacing: CGFloat
+
+    private var contentSize: CGSize {
+        CGSize(
+            width: CGFloat(columns) * cellSize.width + CGFloat(max(0, columns - 1)) * spacing,
+            height: CGFloat(rows) * cellSize.height + CGFloat(max(0, rows - 1)) * spacing
+        )
+    }
+
+    private var itemsPerPage: Int {
+        columns * rows
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeNSView(context: Context) -> NSCollectionView {
+        let layout = NSCollectionViewFlowLayout()
+        layout.itemSize = NSSize(width: cellSize.width, height: cellSize.height)
+        layout.minimumInteritemSpacing = spacing
+        layout.minimumLineSpacing = spacing
+        layout.sectionInset = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
+
+        let collectionView = PanelGridCollectionView()
+        collectionView.collectionViewLayout = layout
+        collectionView.backgroundColors = [.clear]
+        collectionView.isSelectable = false
+        collectionView.allowsMultipleSelection = false
+        collectionView.dataSource = context.coordinator
+        collectionView.delegate = context.coordinator
+        collectionView.gridCoordinator = context.coordinator
+        collectionView.register(PanelCollectionItem.self, forItemWithIdentifier: PanelCollectionItem.identifier)
+
+        context.coordinator.collectionView = collectionView
+        context.coordinator.configure(
+            itemsBySlot: itemsBySlot,
+            layer: layer,
+            pageScopeAppBundleId: pageScopeAppBundleId,
+            currentAppBundleId: currentAppBundleId,
+            currentAppName: currentAppName,
+            page: page,
+            pageCount: pageCount,
+            columns: columns,
+            rows: rows,
+            cellSize: cellSize,
+            spacing: spacing
+        )
+        return collectionView
+    }
+
+    func updateNSView(_ collectionView: NSCollectionView, context: Context) {
+        if let layout = collectionView.collectionViewLayout as? NSCollectionViewFlowLayout {
+            layout.itemSize = NSSize(width: cellSize.width, height: cellSize.height)
+            layout.minimumInteritemSpacing = spacing
+            layout.minimumLineSpacing = spacing
+            layout.invalidateLayout()
+        }
+
+        context.coordinator.configure(
+            itemsBySlot: itemsBySlot,
+            layer: layer,
+            pageScopeAppBundleId: pageScopeAppBundleId,
+            currentAppBundleId: currentAppBundleId,
+            currentAppName: currentAppName,
+            page: page,
+            pageCount: pageCount,
+            columns: columns,
+            rows: rows,
+            cellSize: cellSize,
+            spacing: spacing
+        )
+        collectionView.reloadData()
+    }
+
+    final class Coordinator: NSObject, NSCollectionViewDataSource, NSCollectionViewDelegateFlowLayout {
+        weak var collectionView: NSCollectionView?
+
+        private var slots: [PanelGridSlot] = []
+        private var layer: PanelLayer = .upper
+        private var pageScopeAppBundleId: String?
+        private var currentAppBundleId: String?
+        private var currentAppName: String?
+        private var page: Int = 0
+        private var pageCount: Int = 1
+        private var columns: Int = 0
+        private var rows: Int = 0
+        private var cellSize: CGSize = .zero
+        private var spacing: CGFloat = 0
+        private var mouseDownIndex: Int?
+        private var draggingItem: PanelGridSlot?
+        private var isDraggingItem = false
+        private var didCrossPageDrag = false
+        private var lastDragPoint: CGPoint = .zero
+        private var pendingPageSwitch: DispatchWorkItem?
+        private var pendingPageSwitchTargetPage: Int?
+        private var edgeSwitchLock: PanelDragEdgeDirection?
+        private var lastVisualMoveTime: TimeInterval = 0
+
+        private let edgeSwitchInset: CGFloat = 46
+        private let edgeSwitchReleaseInset: CGFloat = 92
+        private let pageSwitchDelay: TimeInterval = 0.42
+        private let minimumVisualMoveInterval: TimeInterval = 1.0 / 120.0
+
+        func configure(
+            itemsBySlot: [Int: PanelItem],
+            layer: PanelLayer,
+            pageScopeAppBundleId: String?,
+            currentAppBundleId: String?,
+            currentAppName: String?,
+            page: Int,
+            pageCount: Int,
+            columns: Int,
+            rows: Int,
+            cellSize: CGSize,
+            spacing: CGFloat
+        ) {
+            self.layer = layer
+            self.pageScopeAppBundleId = pageScopeAppBundleId
+            self.currentAppBundleId = currentAppBundleId
+            self.currentAppName = currentAppName
+            self.page = page
+            self.pageCount = max(1, pageCount)
+            self.columns = columns
+            self.rows = rows
+            self.cellSize = cellSize
+            self.spacing = spacing
+
+            self.slots = (0..<(columns * rows)).map { slot in
+                PanelGridSlot(slot: slot, item: itemsBySlot[slot])
+            }
+            restoreDraggingItemIfNeeded()
+        }
+
+        func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int {
+            slots.count
+        }
+
+        func collectionView(_ collectionView: NSCollectionView, itemForRepresentedObjectAt indexPath: IndexPath) -> NSCollectionViewItem {
+            guard let itemView = collectionView.makeItem(
+                withIdentifier: PanelCollectionItem.identifier,
+                for: indexPath
+            ) as? PanelCollectionItem else {
+                return NSCollectionViewItem()
+            }
+
+            let slot = slots[indexPath.item]
+            itemView.configure(
+                slot: slot.slot,
+                item: slot.item,
+                layer: layer,
+                currentAppBundleId: currentAppBundleId,
+                currentAppName: currentAppName,
+                pageScopeAppBundleId: pageScopeAppBundleId,
+                page: page,
+                cellSize: cellSize
+            )
+            return itemView
+        }
+
+        func mouseDown(at point: CGPoint) {
+            cancelPendingPageSwitch()
+            mouseDownIndex = indexAt(point)
+            isDraggingItem = false
+            draggingItem = nil
+            didCrossPageDrag = false
+            lastDragPoint = point
+            edgeSwitchLock = nil
+        }
+
+        func mouseDragged(at point: CGPoint) {
+            lastDragPoint = point
+
+            guard let sourceIndex = mouseDownIndex,
+                  sourceIndex >= 0,
+                  sourceIndex < slots.count,
+                  slots[sourceIndex].item != nil else {
+                return
+            }
+
+            if !isDraggingItem {
+                isDraggingItem = true
+                draggingItem = slots[sourceIndex]
+                PanelGridDragVisualState.shared.begin(context: dragContext)
+            }
+
+            schedulePageSwitchIfNeeded(at: point)
+
+            guard let targetIndex = indexAt(point),
+                  targetIndex != sourceIndex,
+                  targetIndex >= 0,
+                  targetIndex < slots.count else {
+                return
+            }
+
+            moveSlot(from: sourceIndex, to: targetIndex)
+            mouseDownIndex = targetIndex
+        }
+
+        func mouseUp(at point: CGPoint) {
+            defer {
+                cancelPendingPageSwitch()
+                PanelGridDragVisualState.shared.end()
+                mouseDownIndex = nil
+                draggingItem = nil
+                isDraggingItem = false
+                didCrossPageDrag = false
+                edgeSwitchLock = nil
+            }
+
+            if isDraggingItem {
+                if didCrossPageDrag {
+                    persistCrossPageSlots()
+                } else {
+                    persistCurrentSlots()
+                }
+                return
+            }
+
+            guard let index = indexAt(point),
+                  index >= 0,
+                  index < slots.count else {
+                return
+            }
+
+            let slot = slots[index]
+            if let item = slot.item {
+                launch(item)
+            } else {
+                AddItemWindowManager.shared.showAddItemWindow(
+                    layer: layer,
+                    appBundleId: currentAppBundleId,
+                    appName: currentAppName,
+                    page: page,
+                    slot: slot.slot
+                )
+            }
+        }
+
+        private func indexAt(_ point: CGPoint) -> Int? {
+            guard cellSize.width > 0, cellSize.height > 0 else { return nil }
+
+            let stepX = cellSize.width + spacing
+            let stepY = cellSize.height + spacing
+            let column = Int(point.x / stepX)
+            let row = Int(point.y / stepY)
+
+            guard column >= 0, column < columns, row >= 0, row < rows else {
+                return nil
+            }
+
+            let localX = point.x - CGFloat(column) * stepX
+            let localY = point.y - CGFloat(row) * stepY
+            guard localX <= cellSize.width, localY <= cellSize.height else {
+                return nil
+            }
+
+            return row * columns + column
+        }
+
+        private func moveSlot(from sourceIndex: Int, to targetIndex: Int) {
+            guard sourceIndex != targetIndex,
+                  sourceIndex >= 0,
+                  sourceIndex < slots.count,
+                  targetIndex >= 0,
+                  targetIndex < slots.count else {
+                return
+            }
+
+            let movingSlot = slots.remove(at: sourceIndex)
+            slots.insert(movingSlot, at: targetIndex)
+
+            for index in slots.indices {
+                slots[index].slot = index
+            }
+
+            moveCollectionItem(from: sourceIndex, to: targetIndex)
+        }
+
+        private func moveCollectionItem(from sourceIndex: Int, to targetIndex: Int) {
+            guard let collectionView else { return }
+
+            let now = CACurrentMediaTime()
+            let shouldAnimate = now - lastVisualMoveTime >= minimumVisualMoveInterval
+            lastVisualMoveTime = now
+
+            if shouldAnimate {
+                NSAnimationContext.runAnimationGroup { context in
+                    context.duration = 0.09
+                    context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                    collectionView.animator().moveItem(
+                        at: IndexPath(item: sourceIndex, section: 0),
+                        to: IndexPath(item: targetIndex, section: 0)
+                    )
+                }
+            } else {
+                NSAnimationContext.runAnimationGroup { context in
+                    context.duration = 0
+                    context.allowsImplicitAnimation = false
+                    collectionView.moveItem(
+                        at: IndexPath(item: sourceIndex, section: 0),
+                        to: IndexPath(item: targetIndex, section: 0)
+                    )
+                }
+            }
+        }
+
+        private func restoreDraggingItemIfNeeded() {
+            guard isDraggingItem,
+                  let draggingItem,
+                  let item = draggingItem.item,
+                  !slots.isEmpty else {
+                return
+            }
+
+            if let existingIndex = slots.firstIndex(where: { $0.item?.id == item.id }) {
+                slots[existingIndex].item = nil
+            }
+
+            let preferredIndex = indexAt(lastDragPoint) ?? clampedIndexAt(lastDragPoint) ?? mouseDownIndex ?? 0
+            insertDraggingItem(item, at: preferredIndex)
+            mouseDownIndex = min(max(0, preferredIndex), max(0, slots.count - 1))
+            collectionView?.reloadData()
+        }
+
+        private func insertDraggingItem(_ item: PanelItem, at index: Int) {
+            guard !slots.isEmpty else { return }
+
+            let targetIndex = min(max(0, index), slots.count - 1)
+            var itemToInsert = item
+            itemToInsert.page = page
+            itemToInsert.slot = targetIndex
+
+            if slots[targetIndex].item == nil {
+                slots[targetIndex].item = itemToInsert
+                slots[targetIndex].slot = targetIndex
+                return
+            }
+
+            var updatedSlots = slots.filter { $0.item?.id != item.id }
+            updatedSlots.insert(PanelGridSlot(slot: targetIndex, item: itemToInsert), at: targetIndex)
+
+            if updatedSlots.count > slots.count {
+                updatedSlots.removeLast()
+            }
+
+            slots = updatedSlots
+            renumberSlots()
+        }
+
+        private func renumberSlots() {
+            for index in slots.indices {
+                slots[index].slot = index
+                slots[index].item?.page = page
+                slots[index].item?.slot = index
+            }
+        }
+
+        private func schedulePageSwitchIfNeeded(at point: CGPoint) {
+            guard isDraggingItem,
+                  pageCount > 1,
+                  cellSize.width > 0,
+                  cellSize.height > 0 else {
+                PanelGridDragVisualState.shared.updateEdgeHint(nil)
+                cancelPendingPageSwitch()
+                return
+            }
+
+            let contentWidth = CGFloat(columns) * cellSize.width + CGFloat(max(0, columns - 1)) * spacing
+            let contentHeight = CGFloat(rows) * cellSize.height + CGFloat(max(0, rows - 1)) * spacing
+
+            guard point.y >= 0, point.y <= contentHeight else {
+                PanelGridDragVisualState.shared.updateEdgeHint(nil)
+                cancelPendingPageSwitch()
+                return
+            }
+
+            releaseEdgeSwitchLockIfNeeded(at: point, contentWidth: contentWidth)
+
+            let direction: PanelDragEdgeDirection?
+            let targetPage: Int?
+            if point.x <= edgeSwitchInset, page > 0 {
+                direction = .previous
+                targetPage = page - 1
+            } else if point.x >= contentWidth - edgeSwitchInset, page < pageCount - 1 {
+                direction = .next
+                targetPage = page + 1
+            } else {
+                direction = nil
+                targetPage = nil
+            }
+
+            guard let direction, let targetPage else {
+                PanelGridDragVisualState.shared.updateEdgeHint(nil)
+                cancelPendingPageSwitch()
+                return
+            }
+
+            guard edgeSwitchLock != direction else {
+                PanelGridDragVisualState.shared.updateEdgeHint(nil)
+                cancelPendingPageSwitch()
+                return
+            }
+
+            PanelGridDragVisualState.shared.updateEdgeHint(
+                PanelDragEdgeHint(
+                    context: dragContext,
+                    direction: direction,
+                    targetPage: targetPage
+                )
+            )
+
+            guard pendingPageSwitchTargetPage != targetPage else { return }
+            cancelPendingPageSwitch()
+            pendingPageSwitchTargetPage = targetPage
+
+            let workItem = DispatchWorkItem { [weak self] in
+                DispatchQueue.main.async {
+                    self?.requestPageSwitch(to: targetPage, direction: direction)
+                }
+            }
+            pendingPageSwitch = workItem
+            DispatchQueue.main.asyncAfter(deadline: .now() + pageSwitchDelay, execute: workItem)
+        }
+
+        private func requestPageSwitch(to targetPage: Int, direction: PanelDragEdgeDirection) {
+            guard isDraggingItem,
+                  targetPage >= 0,
+                  targetPage < pageCount,
+                  targetPage != page,
+                  pendingPageSwitchTargetPage == targetPage else {
+                return
+            }
+
+            cancelPendingPageSwitch()
+            didCrossPageDrag = true
+            edgeSwitchLock = direction
+            PanelGridDragVisualState.shared.updateEdgeHint(nil)
+
+            NotificationCenter.default.post(
+                name: .panelDragRequestPageSwitch,
+                object: nil,
+                userInfo: [
+                    "layer": layer.rawValue,
+                    "appBundleIdentifier": pageScopeAppBundleId as Any,
+                    "page": targetPage
+                ]
+            )
+        }
+
+        private func releaseEdgeSwitchLockIfNeeded(at point: CGPoint, contentWidth: CGFloat) {
+            guard let edgeSwitchLock else { return }
+
+            switch edgeSwitchLock {
+            case .previous:
+                if point.x > edgeSwitchReleaseInset {
+                    self.edgeSwitchLock = nil
+                }
+            case .next:
+                if point.x < contentWidth - edgeSwitchReleaseInset {
+                    self.edgeSwitchLock = nil
+                }
+            }
+        }
+
+        private func cancelPendingPageSwitch() {
+            pendingPageSwitch?.cancel()
+            pendingPageSwitch = nil
+            pendingPageSwitchTargetPage = nil
+        }
+
+        private var dragContext: PanelLayerDragContext {
+            PanelLayerDragContext(layer: layer, appBundleIdentifier: pageScopeAppBundleId)
+        }
+
+        private func persistCurrentSlots() {
+            let itemsPerPage = max(1, columns * rows)
+            var pageItems: [PanelItem] = []
+
+            for index in slots.indices {
+                guard var item = slots[index].item else { continue }
+                item.page = page + index / itemsPerPage
+                item.slot = index % itemsPerPage
+                pageItems.append(item)
+                slots[index].item = item
+                slots[index].slot = index % itemsPerPage
+            }
+
+            DataManager.shared.replacePageItems(
+                for: layer,
+                appBundleIdentifier: pageScopeAppBundleId,
+                page: page,
+                with: pageItems
+            )
+        }
+
+        private func persistCrossPageSlots() {
+            guard let movingItemId = draggingItem?.item?.id,
+                  let targetIndex = slots.firstIndex(where: { $0.item?.id == movingItemId }) else {
+                persistCurrentSlots()
+                return
+            }
+
+            DataManager.shared.moveItem(
+                id: movingItemId,
+                layer: layer,
+                appBundleIdentifier: pageScopeAppBundleId,
+                toPage: page,
+                slotIndex: targetIndex,
+                itemsPerPage: max(1, columns * rows)
+            )
+        }
+
+        private func clampedIndexAt(_ point: CGPoint) -> Int? {
+            guard columns > 0,
+                  rows > 0,
+                  !slots.isEmpty,
+                  cellSize.width > 0,
+                  cellSize.height > 0 else {
+                return nil
+            }
+
+            let stepX = cellSize.width + spacing
+            let stepY = cellSize.height + spacing
+            let column = min(max(0, Int(point.x / stepX)), columns - 1)
+            let row = min(max(0, Int(point.y / stepY)), rows - 1)
+            let index = row * columns + column
+            return min(max(0, index), slots.count - 1)
+        }
+
+        private func launch(_ item: PanelItem) {
+            switch item.type {
+            case .application:
+                AppLauncher.shared.launchApp(at: item.path)
+            case .website:
+                AppLauncher.shared.openWebsite(url: item.path, browserPath: item.browserPath)
+            }
+
+            NotificationCenter.default.post(name: .hidePanel, object: nil)
+        }
+    }
+}
+
+struct PanelGridSlot {
+    var slot: Int
+    var item: PanelItem?
+}
+
+final class PanelGridCollectionView: NSCollectionView {
+    weak var gridCoordinator: DesktopGridView.Coordinator?
+
+    override func mouseDown(with event: NSEvent) {
+        gridCoordinator?.mouseDown(at: convert(event.locationInWindow, from: nil))
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        gridCoordinator?.mouseDragged(at: convert(event.locationInWindow, from: nil))
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        gridCoordinator?.mouseUp(at: convert(event.locationInWindow, from: nil))
+    }
+}
+
+final class PanelCollectionItem: NSCollectionViewItem {
+    static let identifier = NSUserInterfaceItemIdentifier("PanelCollectionItem")
+
+    private var hostingController: NSHostingController<PanelCollectionCellView>?
+
+    override func loadView() {
+        view = NSView()
+        view.wantsLayer = true
+    }
+
+    func configure(
+        slot: Int,
+        item: PanelItem?,
+        layer: PanelLayer,
+        currentAppBundleId: String?,
+        currentAppName: String?,
+        pageScopeAppBundleId: String?,
+        page: Int,
+        cellSize: CGSize
+    ) {
+        let cellView = PanelCollectionCellView(item: item, cellSize: cellSize)
+
+        if let hostingController {
+            hostingController.rootView = cellView
+        } else {
+            let hostingController = NSHostingController(rootView: cellView)
+            hostingController.view.translatesAutoresizingMaskIntoConstraints = false
+            addChild(hostingController)
+            view.addSubview(hostingController.view)
+            NSLayoutConstraint.activate([
+                hostingController.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                hostingController.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+                hostingController.view.topAnchor.constraint(equalTo: view.topAnchor),
+                hostingController.view.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+            ])
+            self.hostingController = hostingController
+        }
+    }
+}
+
+struct PanelCollectionCellView: View {
+    let item: PanelItem?
+    let cellSize: CGSize
+    @ObservedObject private var gridDragVisualState = PanelGridDragVisualState.shared
+    @State private var isHovered = false
+
+    private var shouldShowHover: Bool {
+        isHovered && gridDragVisualState.activeContext == nil
+    }
+
+    var body: some View {
+        Group {
+            if let item {
+                ItemContentView(item: item, isHovered: isHovered)
+            } else {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(shouldShowHover ? Color.primary.opacity(0.05) : Color.clear)
+
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(
+                            shouldShowHover ? Color.secondary.opacity(0.4) : Color.secondary.opacity(0.15),
+                            style: StrokeStyle(lineWidth: 1, dash: [3, 3])
+                        )
+
+                    VStack(spacing: 6) {
+                        Image(systemName: "plus")
+                            .font(.system(size: shouldShowHover ? 20 : 16, weight: .medium))
+                            .foregroundColor(.secondary.opacity(shouldShowHover ? 0.6 : 0.35))
+
+                        if shouldShowHover {
+                            Text("添加")
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary.opacity(0.7))
+                        }
+                    }
+                }
+            }
+        }
+        .frame(width: cellSize.width, height: cellSize.height)
+        .contentShape(Rectangle())
+        .onHover { hovering in
+            isHovered = hovering
+        }
+    }
+}
+
+// MARK: - Edge Page Switch Hint
+struct LayerEdgePageSwitchHint: View {
+    let context: PanelLayerDragContext
+    let currentPage: Int
+    let pageCount: Int
+    @ObservedObject private var dragManager = PanelDragManager.shared
+    @ObservedObject private var gridDragVisualState = PanelGridDragVisualState.shared
+
+    private var hint: PanelDragEdgeHint? {
+        if let edgeHint = gridDragVisualState.edgeHint,
+           edgeHint.context == context {
+            return edgeHint
+        }
+
+        guard let edgeHint = dragManager.edgeHint,
+              edgeHint.context == context else {
+            return nil
+        }
+        return edgeHint
+    }
+
+    private var canSwitchPrevious: Bool {
+        pageCount > 1 && currentPage > 0
+    }
+
+    private var canSwitchNext: Bool {
+        pageCount > 1 && currentPage < pageCount - 1
+    }
+
+    private var shouldShowPassiveHints: Bool {
+        pageCount > 1 &&
+            (dragManager.isDragging(in: context) || gridDragVisualState.isDragging(in: context))
+    }
+
+    var body: some View {
+        HStack {
+            EdgePageSwitchBar(
+                direction: .previous,
+                isActive: hint?.direction == .previous,
+                isVisible: shouldShowPassiveHints && canSwitchPrevious
+            )
+
+            Spacer()
+
+            EdgePageSwitchBar(
+                direction: .next,
+                isActive: hint?.direction == .next,
+                isVisible: shouldShowPassiveHints && canSwitchNext
+            )
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 28)
+        .animation(.spring(response: 0.22, dampingFraction: 0.75), value: hint)
+        .animation(.easeInOut(duration: 0.16), value: shouldShowPassiveHints)
+    }
+}
+
+struct EdgePageSwitchBar: View {
+    let direction: PanelDragEdgeDirection
+    let isActive: Bool
+    let isVisible: Bool
+
+    private var iconName: String {
+        direction == .previous ? "chevron.left" : "chevron.right"
+    }
+
+    var body: some View {
+        VStack(spacing: 8) {
+            Image(systemName: iconName)
+                .font(.system(size: 12, weight: .bold))
+                .foregroundColor(.white.opacity(isActive ? 0.98 : 0.72))
+
+            RoundedRectangle(cornerRadius: 999)
+                .fill(Color.white.opacity(isActive ? 0.86 : 0.42))
+                .frame(width: 3, height: isActive ? 72 : 46)
+        }
+        .frame(width: isActive ? 24 : 18)
+        .frame(maxHeight: .infinity)
+        .background(
+            Capsule()
+                .fill(Color.accentColor.opacity(isActive ? 0.72 : 0.26))
+                .shadow(color: Color.accentColor.opacity(isActive ? 0.32 : 0.12), radius: isActive ? 12 : 5, x: 0, y: 0)
+        )
+        .scaleEffect(isActive ? 1.05 : 1.0)
+        .opacity(isVisible ? 1.0 : 0.0)
+        .animation(.easeInOut(duration: 0.18), value: isActive)
+        .animation(.easeInOut(duration: 0.15), value: isVisible)
+    }
+}
+
 // MARK: - Empty Slot
 struct EmptySlotView: View {
     let layer: PanelLayer
     let currentAppBundleId: String?
     let currentAppName: String?
+    let pageScopeAppBundleId: String?
     let page: Int
+    let slotIndex: Int
+    let itemsPerPage: Int
+    let cellSize: CGSize
+    @ObservedObject private var dragManager = PanelDragManager.shared
     @State private var isHovered = false
+
+    private var dropTarget: PanelDropTarget {
+        PanelDropTarget(
+            layer: layer,
+            appBundleIdentifier: pageScopeAppBundleId,
+            page: page,
+            slot: slotIndex,
+            itemsPerPage: itemsPerPage,
+            kind: .slot
+        )
+    }
+
+    private var isDropTarget: Bool {
+        dragManager.isHovered(dropTarget)
+    }
 
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 10)
-                .fill(isHovered ? Color.primary.opacity(0.05) : Color.clear)
+                .fill((isHovered || isDropTarget) ? Color.primary.opacity(0.05) : Color.clear)
 
             RoundedRectangle(cornerRadius: 10)
                 .stroke(
-                    isHovered ? Color.secondary.opacity(0.4) : Color.secondary.opacity(0.15),
+                    isDropTarget ? Color.accentColor.opacity(0.7) : (isHovered ? Color.secondary.opacity(0.4) : Color.secondary.opacity(0.15)),
                     style: StrokeStyle(lineWidth: 1, dash: [3, 3])
                 )
 
@@ -442,7 +2121,7 @@ struct EmptySlotView: View {
                 }
             }
         }
-        .frame(width: 70, height: 90)
+        .frame(width: cellSize.width, height: cellSize.height)
         .contentShape(Rectangle())
         .onHover { hovering in
             isHovered = hovering
@@ -452,7 +2131,8 @@ struct EmptySlotView: View {
                 layer: layer,
                 appBundleId: currentAppBundleId,
                 appName: currentAppName,
-                page: page
+                page: page,
+                slot: slotIndex
             )
         }
     }
@@ -563,16 +2243,10 @@ struct EmptyStateHintView: View {
     }
 }
 
-// MARK: - Item Button
-struct ItemButton: View {
+// MARK: - Item Content
+struct ItemContentView: View {
     let item: PanelItem
-    let layer: PanelLayer
-    @State private var isHovered = false
-    @State private var showingEditSheet = false
-    @State private var isDragging = false
-    @State private var isDropTarget = false
-    @State private var scale: CGFloat = 1.0
-    @State private var dragTimeoutTask: DispatchWorkItem?
+    let isHovered: Bool
 
     var body: some View {
         VStack(spacing: 6) {
@@ -594,9 +2268,86 @@ struct ItemButton: View {
                 .foregroundColor(.primary)
                 .frame(maxWidth: 70)
         }
-        .frame(width: 70, height: 90)
+    }
+}
+
+// MARK: - Page Indicator Dot
+struct PageIndicatorDot: View {
+    let index: Int
+    @Binding var currentPage: Int
+    let layer: PanelLayer
+    let pageScopeAppBundleId: String?
+    let itemsPerPage: Int
+    @ObservedObject private var dragManager = PanelDragManager.shared
+
+    private var dropTarget: PanelDropTarget {
+        PanelDropTarget(
+            layer: layer,
+            appBundleIdentifier: pageScopeAppBundleId,
+            page: index,
+            slot: 0,
+            itemsPerPage: itemsPerPage,
+            kind: .pageIndicator
+        )
+    }
+
+    private var isDropTarget: Bool {
+        dragManager.isHovered(dropTarget)
+    }
+
+    var body: some View {
+        Circle()
+            .fill(currentPage == index ? Color.accentColor : Color.secondary.opacity(0.3))
+            .frame(width: isDropTarget ? 9 : 6, height: isDropTarget ? 9 : 6)
+            .overlay(
+                Circle()
+                    .stroke(isDropTarget ? Color.accentColor.opacity(0.55) : Color.clear, lineWidth: 3)
+                    .frame(width: 13, height: 13)
+            )
+            .contentShape(Circle())
+            .background(PanelDropTargetFrameReader(target: dropTarget))
+            .animation(.easeInOut(duration: 0.15), value: isDropTarget)
+    }
+}
+
+// MARK: - Item Button
+struct ItemButton: View {
+    let item: PanelItem
+    let layer: PanelLayer
+    let pageScopeAppBundleId: String?
+    let targetPage: Int
+    let slotIndex: Int
+    let itemsPerPage: Int
+    let cellSize: CGSize
+    @ObservedObject private var dragManager = PanelDragManager.shared
+    @State private var isHovered = false
+    @State private var showingEditSheet = false
+    @State private var scale: CGFloat = 1.0
+
+    private var dropTarget: PanelDropTarget {
+        PanelDropTarget(
+            layer: layer,
+            appBundleIdentifier: pageScopeAppBundleId,
+            page: targetPage,
+            slot: slotIndex,
+            itemsPerPage: itemsPerPage,
+            kind: .slot
+        )
+    }
+
+    private var isDropTarget: Bool {
+        dragManager.isHovered(dropTarget)
+    }
+
+    private var isDraggedItem: Bool {
+        dragManager.session?.state.itemId == item.id
+    }
+
+    var body: some View {
+        ItemContentView(item: item, isHovered: isHovered)
+        .frame(width: cellSize.width, height: cellSize.height)
         .scaleEffect(scale)
-        .opacity(isDragging ? 0.0 : 1.0)
+        .opacity(isDraggedItem ? 0.18 : 1.0)
         .overlay(
             RoundedRectangle(cornerRadius: 10)
                 .stroke(isDropTarget ? Color.accentColor : Color.clear, lineWidth: 2)
@@ -608,46 +2359,7 @@ struct ItemButton: View {
         .onTapGesture {
             handleItemClick()
         }
-        .onDrag {
-            withAnimation(.easeOut(duration: 0.15)) {
-                isDragging = true
-                scale = 0.95
-            }
-            // Cancel any existing timeout task
-            dragTimeoutTask?.cancel()
-
-            // Create a timeout task to restore state if drop is not completed
-            let task = DispatchWorkItem {
-                withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
-                    self.isDragging = false
-                    self.scale = 1.0
-                    self.isDropTarget = false
-                }
-            }
-            dragTimeoutTask = task
-
-            // Execute timeout after 0.5 seconds
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: task)
-
-            // Create a simple drag preview with just the icon
-            let provider = NSItemProvider(object: item.id.uuidString as NSString)
-
-            // Set suggested name for better accessibility
-            if item.getIcon() != nil {
-                provider.suggestedName = item.name
-            }
-
-            return provider
-        }
-        .onDrop(of: [UTType.text], delegate: ItemDropDelegate(
-            item: item,
-            layer: layer,
-            appBundleIdentifier: item.appBundleIdentifier,
-            isDragging: $isDragging,
-            isDropTarget: $isDropTarget,
-            scale: $scale,
-            dragTimeoutTask: $dragTimeoutTask
-        ))
+        .simultaneousGesture(dragGesture)
         .animation(.spring(response: 0.3, dampingFraction: 0.6), value: scale)
         .animation(.easeInOut(duration: 0.2), value: isDropTarget)
         .contextMenu {
@@ -657,6 +2369,30 @@ struct ItemButton: View {
             Button("删除", role: .destructive) {
                 DataManager.shared.deleteItem(item)
             }
+        }
+    }
+
+    private var dragGesture: some Gesture {
+        DragGesture(minimumDistance: 6, coordinateSpace: .named("panelDragSpace"))
+            .onChanged { value in
+                if dragManager.session?.state.itemId != item.id {
+                    withAnimation(.easeOut(duration: 0.12)) {
+                        scale = 0.95
+                    }
+                    dragManager.beginDrag(item: item, appBundleIdentifier: pageScopeAppBundleId, at: value.location)
+                }
+                dragManager.updateDrag(at: value.location)
+            }
+            .onEnded { value in
+                dragManager.updateDrag(at: value.location)
+                dragManager.endDrag()
+                resetLocalDragState()
+            }
+    }
+
+    private func resetLocalDragState() {
+        withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+            scale = 1.0
         }
     }
 
@@ -670,93 +2406,6 @@ struct ItemButton: View {
 
         // Hide panel after launching
         NotificationCenter.default.post(name: .hidePanel, object: nil)
-    }
-}
-
-// MARK: - Item Drop Delegate
-struct ItemDropDelegate: SwiftUI.DropDelegate {
-    let item: PanelItem
-    let layer: PanelLayer
-    let appBundleIdentifier: String?
-    @Binding var isDragging: Bool
-    @Binding var isDropTarget: Bool
-    @Binding var scale: CGFloat
-    @Binding var dragTimeoutTask: DispatchWorkItem?
-
-    @State private var hasSwapped = false
-
-    func performDrop(info: DropInfo) -> Bool {
-        // Cancel the timeout task since drop completed successfully
-        dragTimeoutTask?.cancel()
-        dragTimeoutTask = nil
-
-        // Delay restoring the dragging state to allow swap animation to complete
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-            withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
-                isDragging = false
-                scale = 1.0
-            }
-        }
-
-        // Immediately hide the drop target highlight
-        withAnimation(.easeOut(duration: 0.15)) {
-            isDropTarget = false
-        }
-
-        hasSwapped = false
-        return true
-    }
-
-    func dropEntered(info: DropInfo) {
-        // Visual feedback
-        withAnimation(.easeInOut(duration: 0.15)) {
-            isDropTarget = true
-            scale = 1.05
-        }
-
-        // Prevent multiple swaps
-        guard !hasSwapped else { return }
-
-        // Get the dragged item ID
-        guard let itemProviders = info.itemProviders(for: [UTType.text]).first else { return }
-
-        itemProviders.loadItem(forTypeIdentifier: UTType.text.identifier, options: nil) { (data, error) in
-            guard let data = data as? Data,
-                  let draggedIdString = String(data: data, encoding: .utf8),
-                  let draggedId = UUID(uuidString: draggedIdString) else {
-                return
-            }
-
-            DispatchQueue.main.async {
-                // Find the dragged item and target item
-                let items = DataManager.shared.getItems(for: layer, appBundleIdentifier: appBundleIdentifier)
-                guard let draggedIndex = items.firstIndex(where: { $0.id == draggedId }),
-                      let targetIndex = items.firstIndex(where: { $0.id == item.id }),
-                      draggedIndex != targetIndex else {
-                    return
-                }
-
-                // Perform the swap in DataManager
-                hasSwapped = true
-                DataManager.shared.swapItems(
-                    layer: layer,
-                    appBundleIdentifier: appBundleIdentifier,
-                    fromIndex: draggedIndex,
-                    toIndex: targetIndex
-                )
-            }
-        }
-    }
-
-    func dropExited(info: DropInfo) {
-        withAnimation(.easeOut(duration: 0.15)) {
-            isDropTarget = false
-            scale = 1.0
-        }
-    }
-
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-        return DropProposal(operation: .move)
     }
 }
 
@@ -831,4 +2480,5 @@ struct GroupNameEditorView: View {
 // MARK: - Notification Extension
 extension Notification.Name {
     static let hidePanel = Notification.Name("hidePanel")
+    static let panelDragRequestPageSwitch = Notification.Name("panelDragRequestPageSwitch")
 }
