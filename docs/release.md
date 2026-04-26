@@ -4,10 +4,11 @@
 
 ## 当前基线
 
-- 对外版本号：`1.2.4`
-- 构建号：`7`
+- 对外版本号：`1.2.5`
+- 构建号：`8`
 - 当前发布分支：`master`
 - 当前 Tag 历史：
+  - `v1.2.5`
   - `v1.2.4`
   - `v1.2.3`
   - `v1.2.2`
@@ -88,8 +89,8 @@ Quick Panel 使用两套版本信息：
 
 当前字段：
 
-- `MARKETING_VERSION = 1.2.4`
-- `CURRENT_PROJECT_VERSION = 7`
+- `MARKETING_VERSION = 1.2.5`
+- `CURRENT_PROJECT_VERSION = 8`
 
 ### 运行时读取位置
 

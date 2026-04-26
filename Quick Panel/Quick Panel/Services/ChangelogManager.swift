@@ -28,9 +28,23 @@ class ChangelogManager {
 
     let releases: [ChangelogRelease] = [
         ChangelogRelease(
+            version: "1.2.5",
+            build: "8",
+            status: "当前版本",
+            sections: [
+                ChangelogSection(title: "优化", items: [
+                    "优化辅助功能权限引导策略，避免未授权时每次启动都弹出系统权限提示",
+                    "自动权限引导增加 24 小时冷却，减少开发和日常使用中的重复打扰"
+                ]),
+                ChangelogSection(title: "修复", items: [
+                    "修复辅助功能未授权时，每次运行都会重复弹出权限提示的问题"
+                ])
+            ]
+        ),
+        ChangelogRelease(
             version: "1.2.4",
             build: "7",
-            status: "当前版本",
+            status: "已发布",
             sections: [
                 ChangelogSection(title: "新增", items: [
                     "新增主面板项目跨页移动能力，可将应用或网站从当前页移动到其他页",

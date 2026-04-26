@@ -11,6 +11,9 @@ import ApplicationServices
 class PermissionManager {
     static let shared = PermissionManager()
 
+    private let promptCooldown: TimeInterval = 24 * 60 * 60
+    private let lastPromptDateKey = "accessibilityPermissionLastPromptDate"
+
     private init() {}
 
     // MARK: - Accessibility
@@ -19,18 +22,28 @@ class PermissionManager {
         return AXIsProcessTrusted()
     }
 
-    func requestAccessibilityPermission() {
+    func requestAccessibilityPermission(force: Bool = false) {
         // Double check if we really don't have permission
         if checkAccessibilityPermission() {
             AppLogger.debug("辅助功能权限已授权，跳过请求。", category: .permission)
             return
         }
 
+        if !force, !shouldShowPrompt() {
+            AppLogger.info("辅助功能权限引导仍在冷却期内，跳过本次提示。", category: .permission)
+            return
+        }
+
+        markPromptShown()
         AppLogger.notice("开始请求辅助功能权限。", category: .permission)
 
-        // First, trigger the system prompt by calling with prompt option
-        let options: NSDictionary = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
-        let trusted = AXIsProcessTrustedWithOptions(options)
+        let trusted: Bool
+        if force {
+            let options: NSDictionary = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
+            trusted = AXIsProcessTrustedWithOptions(options)
+        } else {
+            trusted = AXIsProcessTrusted()
+        }
 
         if !trusted {
             AppLogger.notice("系统未授予辅助功能权限，展示引导弹窗。", category: .permission)
@@ -65,6 +78,18 @@ class PermissionManager {
                 }
             }
         }
+    }
+
+    private func shouldShowPrompt() -> Bool {
+        guard let lastPromptDate = UserDefaults.standard.object(forKey: lastPromptDateKey) as? Date else {
+            return true
+        }
+
+        return Date().timeIntervalSince(lastPromptDate) >= promptCooldown
+    }
+
+    private func markPromptShown() {
+        UserDefaults.standard.set(Date(), forKey: lastPromptDateKey)
     }
 
     func openAccessibilitySettings() {
