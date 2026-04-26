@@ -59,8 +59,8 @@ struct AddItemView: View {
                         }
 
                         Picker("类型", selection: $itemType) {
-                            Text("应用程序").tag(ItemType.application)
                             Text("网站").tag(ItemType.website)
+                            Text("应用程序").tag(ItemType.application)
                         }
                         .pickerStyle(.segmented)
 
