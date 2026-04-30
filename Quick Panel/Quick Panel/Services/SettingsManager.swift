@@ -103,12 +103,15 @@ class SettingsManager: ObservableObject {
                 return
             }
             saveSettings()
-            NotificationCenter.default.post(name: .settingsDidChange, object: nil)
+            if !isSuppressingSettingsDidChange {
+                NotificationCenter.default.post(name: .settingsDidChange, object: nil)
+            }
         }
     }
 
     private let configDirectory: URL
     private let settingsFile: URL
+    private var isSuppressingSettingsDidChange = false
 
     private init() {
         // Setup config directory
@@ -168,8 +171,9 @@ class SettingsManager: ObservableObject {
 
         guard newSettings != settings else { return }
 
+        isSuppressingSettingsDidChange = true
         settings = newSettings
-        saveSettings()
+        isSuppressingSettingsDidChange = false
     }
 
     // Batch update to avoid multiple notifications

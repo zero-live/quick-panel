@@ -148,9 +148,6 @@ class PanelWindowManager {
         scrollWheelMonitor = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel]) { [weak self, weak window] event in
             guard let self = self, let window = window, event.window == window else { return event }
 
-            let now = ProcessInfo.processInfo.systemUptime
-            guard now - self.lastScrollTime > 0.3 else { return event }
-
             let locationInWindow = event.locationInWindow
             let settings = SettingsManager.shared.settings
             let lowerLayerHeight = settings.layerHeight(for: .lower)
@@ -172,6 +169,11 @@ class PanelWindowManager {
             }
 
             guard let targetLayer else {
+                return nil
+            }
+
+            let now = ProcessInfo.processInfo.systemUptime
+            guard now - self.lastScrollTime > 0.3 else {
                 return nil
             }
 
@@ -284,17 +286,20 @@ class PanelWindowManager {
 
         let currentFrame = window.frame
         let center = CGPoint(x: currentFrame.midX, y: currentFrame.midY)
+        let newSize = NSSize(width: width, height: height)
 
-        let newOrigin = CGPoint(
-            x: center.x - width / 2,
-            y: center.y - height / 2
-        )
+        if abs(currentFrame.width - newSize.width) > 0.5 || abs(currentFrame.height - newSize.height) > 0.5 {
+            let newOrigin = CGPoint(
+                x: center.x - width / 2,
+                y: center.y - height / 2
+            )
 
-        window.setFrame(
-            NSRect(origin: newOrigin, size: NSSize(width: width, height: height)),
-            display: true,
-            animate: isVisible
-        )
+            window.setFrame(
+                NSRect(origin: newOrigin, size: newSize),
+                display: true,
+                animate: isVisible
+            )
+        }
 
         // Update window opacity
         window.alphaValue = settings.panelOpacity

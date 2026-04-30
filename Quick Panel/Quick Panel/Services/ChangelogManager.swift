@@ -28,9 +28,24 @@ class ChangelogManager {
 
     let releases: [ChangelogRelease] = [
         ChangelogRelease(
+            version: "1.2.6",
+            build: "9",
+            status: "当前版本",
+            sections: [
+                ChangelogSection(title: "修复", items: [
+                    "修复主面板项目右键菜单失效的问题，恢复编辑与删除入口",
+                    "修复下层面板滚轮翻页时，面板内容或窗口发生上下偏移的问题"
+                ]),
+                ChangelogSection(title: "优化", items: [
+                    "优化滚轮事件处理，面板内滚轮只用于翻页，不再继续传递给内部视图",
+                    "优化下层页码记忆保存逻辑，避免页码变更触发全局设置重排"
+                ])
+            ]
+        ),
+        ChangelogRelease(
             version: "1.2.5",
             build: "8",
-            status: "当前版本",
+            status: "已发布",
             sections: [
                 ChangelogSection(title: "优化", items: [
                     "优化辅助功能权限引导策略，避免未授权时每次启动都弹出系统权限提示",

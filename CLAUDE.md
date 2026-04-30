@@ -15,8 +15,8 @@ The current shipped implementation is not a plain SwiftUI `WindowGroup` app. It 
 
 ## Current Version
 
-- Marketing version: `1.2.5`
-- Build number: `8`
+- Marketing version: `1.2.6`
+- Build number: `9`
 - Bundle identifier: `com.benxin.Quick-Panel`
 - Deployment target: `macOS 26.2`
 - No third-party dependencies
