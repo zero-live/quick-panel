@@ -1043,6 +1043,10 @@ struct AdvancedTab: View {
         accessibilityGranted ? "已授权" : "未授权"
     }
 
+    private var accessibilityDescriptionText: String {
+        accessibilityGranted ? "当前进程已获得授权，可稳定监听鼠标中键" : "系统开关开启后，可能需要重启应用或重新运行才会生效"
+    }
+
     private var accessibilityStatusColor: Color {
         accessibilityGranted ? .green : .orange
     }
@@ -1124,7 +1128,7 @@ struct AdvancedTab: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("辅助功能权限")
                                 .font(.system(size: 13, weight: .medium))
-                            Text(accessibilityGranted ? "当前已授权，可稳定监听鼠标中键" : "建议授权，以获得更稳定的全局鼠标监听能力")
+                            Text(accessibilityDescriptionText)
                                 .font(.system(size: 11))
                                 .foregroundColor(.secondary)
                         }
@@ -1398,6 +1402,7 @@ struct AdvancedTab: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             refreshAccessibilityStatus()
+            refreshAccessibilityStatusAfterSystemSettles()
         }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
             refreshAccessibilityStatus()
@@ -1406,6 +1411,12 @@ struct AdvancedTab: View {
 
     private func refreshAccessibilityStatus() {
         accessibilityGranted = PermissionManager.shared.checkAccessibilityPermission()
+    }
+
+    private func refreshAccessibilityStatusAfterSystemSettles() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+            refreshAccessibilityStatus()
+        }
     }
 
     private func formattedDate(_ date: Date?) -> String {

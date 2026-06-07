@@ -19,7 +19,8 @@ class PermissionManager {
     // MARK: - Accessibility
 
     func checkAccessibilityPermission() -> Bool {
-        return AXIsProcessTrusted()
+        let options: NSDictionary = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: false]
+        return AXIsProcessTrustedWithOptions(options)
     }
 
     func requestAccessibilityPermission(force: Bool = false) {
@@ -62,6 +63,7 @@ class PermissionManager {
                 5. 重启应用
 
                 注意：如果应用刚安装，可能需要先运行一次才会出现在列表中。
+                如果之前已经勾选但仍显示未授权，请关闭再打开开关，或移除旧的 Quick Panel 项后重新授权当前应用。
                 """
                 alert.alertStyle = .informational
                 alert.addButton(withTitle: "打开系统设置")
@@ -71,7 +73,6 @@ class PermissionManager {
                 let response = alert.runModal()
 
                 if response == .alertFirstButtonReturn {
-                    // Open System Settings - try different approaches for different macOS versions
                     self.openAccessibilitySettings()
                 } else if response == .alertThirdButtonReturn {
                     NSApplication.shared.terminate(nil)
@@ -90,34 +91,19 @@ class PermissionManager {
 
     private func markPromptShown() {
         UserDefaults.standard.set(Date(), forKey: lastPromptDateKey)
+        UserDefaults.standard.synchronize()
     }
 
     func openAccessibilitySettings() {
         AppLogger.info("打开辅助功能系统设置。", category: .permission)
-        // Try multiple methods to open accessibility settings
 
-        // Method 1: Direct URL scheme (works on macOS 13+)
-        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
-            NSWorkspace.shared.open(url)
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") else {
+            AppLogger.error("辅助功能系统设置 URL 无效。", category: .permission)
+            return
         }
 
-        // Method 2: Fallback - open Security & Privacy pane
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            let script = """
-            tell application "System Settings"
-                activate
-                delay 0.5
-                reveal pane id "com.apple.preference.security"
-            end tell
-            """
-
-            if let appleScript = NSAppleScript(source: script) {
-                var error: NSDictionary?
-                appleScript.executeAndReturnError(&error)
-                if let error = error {
-                    AppLogger.error("通过 AppleScript 打开系统设置失败：\(error.description)", category: .permission)
-                }
-            }
+        if !NSWorkspace.shared.open(url) {
+            AppLogger.error("打开辅助功能系统设置失败。", category: .permission)
         }
     }
 }

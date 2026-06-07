@@ -28,9 +28,25 @@ class ChangelogManager {
 
     let releases: [ChangelogRelease] = [
         ChangelogRelease(
+            version: "1.2.7",
+            build: "10",
+            status: "当前版本",
+            sections: [
+                ChangelogSection(title: "修复", items: [
+                    "修复已开启辅助功能权限后，应用仍显示未授权的问题",
+                    "修复 Debug 构建重新签名后辅助功能授权失效的问题",
+                    "修复打开辅助功能系统设置时 AppleScript 兜底报错的问题"
+                ]),
+                ChangelogSection(title: "优化", items: [
+                    "优化 Debug 构建与 Xcode 运行前的签名稳定性，减少开发和重启后的重复授权",
+                    "优化辅助功能权限引导文案，提示清理旧授权项后重新授权"
+                ])
+            ]
+        ),
+        ChangelogRelease(
             version: "1.2.6",
             build: "9",
-            status: "当前版本",
+            status: "已发布",
             sections: [
                 ChangelogSection(title: "修复", items: [
                     "修复主面板项目右键菜单失效的问题，恢复编辑与删除入口",
