@@ -12,6 +12,8 @@ import AppKit
 // MARK: - Panel Material Style
 
 enum PanelMaterialStyle: String, Codable, CaseIterable, Identifiable {
+    case liquidGlass         // NSGlassEffectView .regular — same material as the Dock / Control Center
+    case liquidGlassClear    // NSGlassEffectView .clear — more transparent, more background color bleeding through
     case sidebar
     case popover
     case menu
@@ -20,9 +22,19 @@ enum PanelMaterialStyle: String, Codable, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    /// Whether this style renders via the macOS 26 `NSGlassEffectView` (true Liquid Glass)
+    /// rather than the older `NSVisualEffectView` frosted-blur material.
+    var usesLiquidGlass: Bool {
+        self == .liquidGlass || self == .liquidGlassClear
+    }
+
+    var glassStyle: NSGlassEffectView.Style {
+        self == .liquidGlassClear ? .clear : .regular
+    }
+
     var material: NSVisualEffectView.Material {
         switch self {
-        case .sidebar: return .sidebar
+        case .liquidGlass, .liquidGlassClear, .sidebar: return .sidebar
         case .popover: return .popover
         case .menu: return .menu
         case .hudWindow: return .hudWindow
@@ -32,7 +44,9 @@ enum PanelMaterialStyle: String, Codable, CaseIterable, Identifiable {
 
     var displayName: String {
         switch self {
-        case .sidebar: return "侧边栏（默认）"
+        case .liquidGlass: return "液态玻璃（推荐，与 Dock 一致）"
+        case .liquidGlassClear: return "液态玻璃 · 清透"
+        case .sidebar: return "侧边栏"
         case .popover: return "弹出层"
         case .menu: return "菜单"
         case .hudWindow: return "HUD 深色"
@@ -56,8 +70,8 @@ struct AppSettings: Codable, Equatable {
     var itemSpacing: CGFloat = 16   // 8-24
     var cellWidth: CGFloat = 70     // 50-100
     var cellHeight: CGFloat = 90    // 60-120
-    var panelOpacity: Double = 1.0  // 0.5-1.0
-    var panelMaterialStyle: PanelMaterialStyle = .sidebar
+    var panelOpacity: Double = 1.0  // 0.2-1.0, applied to the glass background only
+    var panelMaterialStyle: PanelMaterialStyle = .liquidGlass
     var launchAtLogin: Bool = false
     var hotkeyEnabled: Bool = false
     var hotkeyKeyCode: UInt32 = 49       // Default: Space (keyCode 49)
@@ -112,7 +126,7 @@ struct AppSettings: Codable, Equatable {
         itemSpacing = max(8, min(24, itemSpacing))
         cellWidth = max(50, min(100, cellWidth))
         cellHeight = max(60, min(120, cellHeight))
-        panelOpacity = max(0.5, min(1.0, panelOpacity))
+        panelOpacity = max(0.2, min(1.0, panelOpacity))
         lowerPageMemory = lowerPageMemory.reduce(into: [:]) { partialResult, entry in
             partialResult[entry.key] = max(0, entry.value)
         }

@@ -802,12 +802,106 @@ struct PanelGridMetricsReader: View {
 }
 
 // MARK: - Vibrant Background
-/// NSVisualEffectView forced to `.active` so the panel keeps a real frosted-glass
-/// look even though it's a `.nonactivatingPanel` that never becomes key window.
-/// SwiftUI's `.glassEffect()` degrades to a flat blur in that state, which is why
-/// it looked washed-out/gray instead of a proper vibrant material.
-struct PanelVibrantBackground: NSViewRepresentable {
-    var material: NSVisualEffectView.Material = .sidebar
+/// Renders the panel's translucent background.
+///
+/// `.nonactivatingPanel` never becomes key window, and SwiftUI's `.glassEffect()`
+/// degrades to a flat gray blur in that state instead of real Liquid Glass. So for
+/// the "liquid glass" styles this uses AppKit's `NSGlassEffectView` directly — the
+/// same material the Dock and Control Center render with — which doesn't depend on
+/// key-window state. Older `NSVisualEffectView` materials are kept as alternatives
+/// forced to `.active` so they stay vibrant too.
+struct PanelVibrantBackground: View {
+    var style: PanelMaterialStyle
+    var opacity: Double = 1
+    var cornerRadius: CGFloat = 18
+
+    var body: some View {
+        if style.usesLiquidGlass {
+            LiquidGlassBackgroundView(
+                glassStyle: style.glassStyle,
+                opacity: opacity,
+                cornerRadius: cornerRadius
+            )
+        } else {
+            VisualEffectBackgroundView(
+                material: style.material,
+                opacity: opacity,
+                cornerRadius: cornerRadius
+            )
+        }
+    }
+}
+
+struct PanelVibrantSurface: View {
+    var style: PanelMaterialStyle
+    var opacity: Double
+    var cornerRadius: CGFloat
+
+    private var usesLowOpacityReadabilityMode: Bool {
+        opacity <= 0.45
+    }
+
+    private var readabilityBoost: Double {
+        max(0, min(1, (0.5 - opacity) / 0.3))
+    }
+
+    private var borderColor: Color {
+        if usesLowOpacityReadabilityMode {
+            return Color.black.opacity(0.18 + 0.12 * readabilityBoost)
+        }
+
+        return style.usesLiquidGlass
+            ? Color.white.opacity(0.25)
+            : Color.primary.opacity(0.08)
+    }
+
+    var body: some View {
+        ZStack {
+            PanelVibrantBackground(
+                style: style,
+                opacity: opacity,
+                cornerRadius: cornerRadius
+            )
+
+            // A neutral graphite wash reduces wallpaper detail without making
+            // low-opacity glass look milky or changing its transparency setting.
+            RoundedRectangle(cornerRadius: cornerRadius)
+                .fill(Color(white: 0.52).opacity(0.14 * readabilityBoost))
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: cornerRadius)
+                .strokeBorder(borderColor, lineWidth: usesLowOpacityReadabilityMode ? 0.9 : 0.75)
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+struct LiquidGlassBackgroundView: NSViewRepresentable {
+    var glassStyle: NSGlassEffectView.Style
+    var opacity: Double
+    var cornerRadius: CGFloat
+
+    func makeNSView(context: Context) -> NSGlassEffectView {
+        let view = NSGlassEffectView()
+        view.style = glassStyle
+        view.alphaValue = opacity
+        view.cornerRadius = cornerRadius
+        view.clipsToBounds = true
+        return view
+    }
+
+    func updateNSView(_ nsView: NSGlassEffectView, context: Context) {
+        nsView.style = glassStyle
+        nsView.alphaValue = opacity
+        nsView.cornerRadius = cornerRadius
+        nsView.clipsToBounds = true
+    }
+}
+
+struct VisualEffectBackgroundView: NSViewRepresentable {
+    var material: NSVisualEffectView.Material
+    var opacity: Double
+    var cornerRadius: CGFloat
 
     func makeNSView(context: Context) -> NSVisualEffectView {
         let view = NSVisualEffectView()
@@ -815,16 +909,23 @@ struct PanelVibrantBackground: NSViewRepresentable {
         view.blendingMode = .behindWindow
         view.state = .active
         view.isEmphasized = true
+        view.alphaValue = opacity
+        view.wantsLayer = true
+        view.layer?.cornerRadius = cornerRadius
+        view.layer?.masksToBounds = true
         return view
     }
 
     func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
         nsView.material = material
         nsView.state = .active
+        nsView.alphaValue = opacity
+        nsView.layer?.cornerRadius = cornerRadius
     }
 }
 
 struct PanelView: View {
+    @Environment(\.colorScheme) private var systemColorScheme
     @ObservedObject var dataManager = DataManager.shared
     @ObservedObject var settingsManager = SettingsManager.shared
     @ObservedObject var contextDetector = ContextDetector.shared
@@ -882,6 +983,19 @@ struct PanelView: View {
         }
 
         return "当前应用还没有专属项目，可点击空位添加。"
+    }
+
+    private var usesLowOpacityReadabilityMode: Bool {
+        settingsManager.settings.panelOpacity <= 0.45
+    }
+
+    private var contentColorScheme: ColorScheme {
+        usesLowOpacityReadabilityMode ? .light : systemColorScheme
+    }
+
+    private var readabilityBoost: Double {
+        let opacity = settingsManager.settings.panelOpacity
+        return max(0, min(1, (0.5 - opacity) / 0.3))
     }
 
     var upperPageCount: Int {
@@ -955,11 +1069,19 @@ struct PanelView: View {
             }
         }
         .coordinateSpace(name: "panelDragSpace")
-        .background(PanelVibrantBackground(material: settingsManager.settings.panelMaterialStyle.material))
-        .clipShape(RoundedRectangle(cornerRadius: 18))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18)
-                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+        .environment(\.colorScheme, contentColorScheme)
+        .shadow(
+            color: Color(white: 0.48).opacity(0.46 * readabilityBoost),
+            radius: 0.9,
+            x: 0,
+            y: 0.5
+        )
+        .background(
+            PanelVibrantSurface(
+                style: settingsManager.settings.panelMaterialStyle,
+                opacity: settingsManager.settings.panelOpacity,
+                cornerRadius: 18
+            )
         )
         .onAppear {
             lowerPagesByApp = settingsManager.settings.lowerPageMemory

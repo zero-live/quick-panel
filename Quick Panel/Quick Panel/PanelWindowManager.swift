@@ -75,7 +75,7 @@ class PanelWindowManager {
         window.collectionBehavior = [.canJoinAllSpaces, .stationary]
         window.isMovableByWindowBackground = false  // Disable automatic dragging
         window.hasShadow = true
-        window.alphaValue = settings.panelOpacity
+        window.alphaValue = 1
 
         if let contentView = window.contentView {
             contentView.wantsLayer = true
@@ -301,9 +301,10 @@ class PanelWindowManager {
             )
         }
 
-        // Update window opacity
-        window.alphaValue = settings.panelOpacity
-        AppLogger.info("主面板设置已应用：\(Int(width))x\(Int(height))，透明度=\(Int(settings.panelOpacity * 100))%。", category: .panel)
+        // Keep content fully opaque. Panel opacity is applied only to the glass
+        // background so icons and labels never fade together with the material.
+        window.alphaValue = 1
+        AppLogger.info("主面板设置已应用：\(Int(width))x\(Int(height))，玻璃透明度=\(Int(settings.panelOpacity * 100))%。", category: .panel)
     }
 
     private func screenContaining(point: CGPoint) -> NSScreen? {

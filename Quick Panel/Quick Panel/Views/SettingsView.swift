@@ -254,6 +254,7 @@ struct GridSettingsTab: View {
 // MARK: - Appearance Tab
 
 struct AppearanceTab: View {
+    @Environment(\.colorScheme) private var systemColorScheme
     @ObservedObject var settingsManager = SettingsManager.shared
     @State private var tempOpacity: Double = 1.0
     @State private var tempMaterialStyle: PanelMaterialStyle = .sidebar
@@ -261,6 +262,14 @@ struct AppearanceTab: View {
     var hasChanges: Bool {
         tempOpacity != settingsManager.settings.panelOpacity ||
         tempMaterialStyle != settingsManager.settings.panelMaterialStyle
+    }
+
+    private var previewColorScheme: ColorScheme {
+        tempOpacity <= 0.45 ? .light : systemColorScheme
+    }
+
+    private var previewReadabilityBoost: Double {
+        max(0, min(1, (0.5 - tempOpacity) / 0.3))
     }
 
     var body: some View {
@@ -303,7 +312,7 @@ struct AppearanceTab: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("透明度")
                                     .font(.system(size: 13, weight: .medium))
-                                Text("调整面板的不透明程度")
+                                Text("只调整玻璃背景，图标和文字保持清晰")
                                     .font(.system(size: 11))
                                     .foregroundColor(.secondary)
                             }
@@ -314,7 +323,7 @@ struct AppearanceTab: View {
                                 .frame(width: 50, alignment: .trailing)
                         }
 
-                        Slider(value: $tempOpacity, in: 0.5...1.0, step: 0.05)
+                        Slider(value: $tempOpacity, in: 0.2...1.0, step: 0.05)
                             .padding(.leading, 32)
                     }
 
@@ -333,7 +342,7 @@ struct AppearanceTab: View {
                             Spacer()
                             ZStack {
                                 PanelStylePreview(
-                                    material: tempMaterialStyle.material,
+                                    style: tempMaterialStyle,
                                     opacity: tempOpacity
                                 )
                                 .frame(width: 240, height: 160)
@@ -346,6 +355,13 @@ struct AppearanceTab: View {
                                         .font(.system(size: 13, weight: .medium))
                                         .foregroundColor(.secondary)
                                 }
+                                .environment(\.colorScheme, previewColorScheme)
+                                .shadow(
+                                    color: Color(white: 0.48).opacity(0.46 * previewReadabilityBoost),
+                                    radius: 0.9,
+                                    x: 0,
+                                    y: 0.5
+                                )
                             }
                             .clipShape(RoundedRectangle(cornerRadius: 14))
                             .shadow(radius: 8)
@@ -410,24 +426,12 @@ struct AppearanceTab: View {
 
 // MARK: - Panel Style Preview
 
-struct PanelStylePreview: NSViewRepresentable {
-    let material: NSVisualEffectView.Material
+struct PanelStylePreview: View {
+    let style: PanelMaterialStyle
     let opacity: Double
 
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-        view.blendingMode = .behindWindow
-        view.state = .active
-        view.isEmphasized = true
-        view.wantsLayer = true
-        view.layer?.cornerRadius = 14
-        view.layer?.masksToBounds = true
-        return view
-    }
-
-    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
-        nsView.material = material
-        nsView.alphaValue = opacity
+    var body: some View {
+        PanelVibrantSurface(style: style, opacity: opacity, cornerRadius: 14)
     }
 }
 

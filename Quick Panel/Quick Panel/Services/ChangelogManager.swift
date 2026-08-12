@@ -28,9 +28,48 @@ class ChangelogManager {
 
     let releases: [ChangelogRelease] = [
         ChangelogRelease(
+            version: "1.4.0",
+            build: "12",
+            status: "当前版本",
+            sections: [
+                ChangelogSection(title: "新增", items: [
+                    "新增原生液态玻璃与液态玻璃 · 清透主题，面板效果与 macOS Dock 的系统玻璃材质保持一致",
+                    "面板透明度范围扩展至 20% - 100%，并提供实时预览"
+                ]),
+                ChangelogSection(title: "修复", items: [
+                    "修复系统材质在非激活悬浮面板中退化为灰色模糊层的问题",
+                    "修复调整透明度时图标和文字随背景一起变淡的问题"
+                ]),
+                ChangelogSection(title: "优化", items: [
+                    "低透明度下使用自然的深灰内容与轻量中性灰承托，提升复杂壁纸上的可读性",
+                    "优化玻璃圆角裁切与边界细节"
+                ])
+            ]
+        ),
+        ChangelogRelease(
+            version: "1.3.0",
+            build: "11",
+            status: "已发布",
+            sections: [
+                ChangelogSection(title: "新增", items: [
+                    "设置 - 外观 中新增多种系统毛玻璃材质选择，并提供实时预览"
+                ]),
+                ChangelogSection(title: "修复", items: [
+                    "修复主面板深色模式下毛玻璃效果偏灰发闷的问题",
+                    "修复面板翻页动画方向与实际翻页方向不一致的问题",
+                    "修复删除含有内容的页面时缺少二次确认的问题"
+                ]),
+                ChangelogSection(title: "优化", items: [
+                    "补充面板阴影与多项 hover、按压反馈",
+                    "优化拖拽视觉反馈与误触判定",
+                    "补充项目名称提示及应用、网站右键快捷操作"
+                ])
+            ]
+        ),
+        ChangelogRelease(
             version: "1.2.7",
             build: "10",
-            status: "当前版本",
+            status: "已发布",
             sections: [
                 ChangelogSection(title: "修复", items: [
                     "修复已开启辅助功能权限后，应用仍显示未授权的问题",
