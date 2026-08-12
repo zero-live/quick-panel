@@ -7,6 +7,39 @@
 
 import Foundation
 import Combine
+import AppKit
+
+// MARK: - Panel Material Style
+
+enum PanelMaterialStyle: String, Codable, CaseIterable, Identifiable {
+    case sidebar
+    case popover
+    case menu
+    case hudWindow
+    case contentBackground
+
+    var id: String { rawValue }
+
+    var material: NSVisualEffectView.Material {
+        switch self {
+        case .sidebar: return .sidebar
+        case .popover: return .popover
+        case .menu: return .menu
+        case .hudWindow: return .hudWindow
+        case .contentBackground: return .contentBackground
+        }
+    }
+
+    var displayName: String {
+        switch self {
+        case .sidebar: return "侧边栏（默认）"
+        case .popover: return "弹出层"
+        case .menu: return "菜单"
+        case .hudWindow: return "HUD 深色"
+        case .contentBackground: return "内容背景"
+        }
+    }
+}
 
 // MARK: - AppSettings Model
 
@@ -24,6 +57,7 @@ struct AppSettings: Codable, Equatable {
     var cellWidth: CGFloat = 70     // 50-100
     var cellHeight: CGFloat = 90    // 60-120
     var panelOpacity: Double = 1.0  // 0.5-1.0
+    var panelMaterialStyle: PanelMaterialStyle = .sidebar
     var launchAtLogin: Bool = false
     var hotkeyEnabled: Bool = false
     var hotkeyKeyCode: UInt32 = 49       // Default: Space (keyCode 49)

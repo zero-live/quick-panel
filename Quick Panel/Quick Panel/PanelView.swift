@@ -801,6 +801,29 @@ struct PanelGridMetricsReader: View {
     }
 }
 
+// MARK: - Vibrant Background
+/// NSVisualEffectView forced to `.active` so the panel keeps a real frosted-glass
+/// look even though it's a `.nonactivatingPanel` that never becomes key window.
+/// SwiftUI's `.glassEffect()` degrades to a flat blur in that state, which is why
+/// it looked washed-out/gray instead of a proper vibrant material.
+struct PanelVibrantBackground: NSViewRepresentable {
+    var material: NSVisualEffectView.Material = .sidebar
+
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = material
+        view.blendingMode = .behindWindow
+        view.state = .active
+        view.isEmphasized = true
+        return view
+    }
+
+    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
+        nsView.material = material
+        nsView.state = .active
+    }
+}
+
 struct PanelView: View {
     @ObservedObject var dataManager = DataManager.shared
     @ObservedObject var settingsManager = SettingsManager.shared
@@ -903,6 +926,8 @@ struct PanelView: View {
 
                 // Divider
                 Divider()
+                    .background(Color.secondary.opacity(0.2))
+                    .frame(height: 1.5)
                     .padding(.horizontal, 20)
                     .padding(.vertical, 6)
 
@@ -930,7 +955,12 @@ struct PanelView: View {
             }
         }
         .coordinateSpace(name: "panelDragSpace")
-        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18))
+        .background(PanelVibrantBackground(material: settingsManager.settings.panelMaterialStyle.material))
+        .clipShape(RoundedRectangle(cornerRadius: 18))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18)
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+        )
         .onAppear {
             lowerPagesByApp = settingsManager.settings.lowerPageMemory
             contextDetector.refreshCurrentApp()
@@ -1019,6 +1049,10 @@ struct LayerGridView: View {
     @ObservedObject private var dragManager = PanelDragManager.shared
     @State private var showingGroupNameEditor = false
     @State private var editingGroupName = ""
+    @State private var pageMovedForward = true
+    @State private var isDeletePageHovered = false
+    @State private var isAddPageHovered = false
+    @State private var showingDeletePageConfirm = false
 
     private var layerHeight: CGFloat {
         SettingsManager.shared.settings.layerHeight(for: layer)
@@ -1066,6 +1100,23 @@ struct LayerGridView: View {
         }
     }
 
+    private func deleteCurrentPage() {
+        let deletingPage = page
+        dataManager.deletePage(
+            layer: layer,
+            page: deletingPage,
+            appBundleIdentifier: pageScopeAppBundleId
+        )
+        goToPage(max(0, deletingPage - 1))
+    }
+
+    private func goToPage(_ newPage: Int) {
+        pageMovedForward = newPage >= page
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            page = newPage
+        }
+    }
+
     var currentPageItems: [PanelItem] {
         displayItems
             .filter { $0.page == page }
@@ -1109,24 +1160,38 @@ struct LayerGridView: View {
                 HStack(spacing: 6) {
                     if page > 0 {
                         Button(action: {
-                            let deletingPage = page
-                            dataManager.deletePage(
-                                layer: layer,
-                                page: deletingPage,
-                                appBundleIdentifier: pageScopeAppBundleId
-                            )
-                            withAnimation {
-                                page = max(0, deletingPage - 1)
+                            if currentPageItems.isEmpty {
+                                deleteCurrentPage()
+                            } else {
+                                showingDeletePageConfirm = true
                             }
                         }) {
                             Image(systemName: "minus")
                                 .font(.system(size: 9, weight: .bold))
-                                .foregroundColor(.secondary.opacity(0.5))
+                                .foregroundColor(.secondary.opacity(isDeletePageHovered ? 0.8 : 0.5))
                                 .frame(width: 14, height: 14)
-                                .background(Circle().fill(Color.secondary.opacity(0.15)))
+                                .background(Circle().fill(Color.secondary.opacity(isDeletePageHovered ? 0.25 : 0.15)))
+                                .scaleEffect(isDeletePageHovered ? 1.1 : 1.0)
                         }
                         .buttonStyle(.plain)
                         .help("删除当前页")
+                        .onHover { hovering in
+                            withAnimation(.easeOut(duration: 0.12)) {
+                                isDeletePageHovered = hovering
+                            }
+                        }
+                        .confirmationDialog(
+                            "确定删除此页吗？",
+                            isPresented: $showingDeletePageConfirm,
+                            titleVisibility: .visible
+                        ) {
+                            Button("删除该页及其中的项目", role: .destructive) {
+                                deleteCurrentPage()
+                            }
+                            Button("取消", role: .cancel) {}
+                        } message: {
+                            Text("此页面上的 \(currentPageItems.count) 个项目将一并被删除，且无法撤销。")
+                        }
                     }
 
                     if pageCount > 1 {
@@ -1143,18 +1208,22 @@ struct LayerGridView: View {
                             name: "面板#\(newPage + 1)",
                             appBundleIdentifier: pageScopeAppBundleId
                         )
-                        withAnimation {
-                            page = newPage
-                        }
+                        goToPage(newPage)
                     }) {
                         Image(systemName: "plus")
                             .font(.system(size: 9, weight: .bold))
-                            .foregroundColor(.secondary.opacity(0.5))
+                            .foregroundColor(.secondary.opacity(isAddPageHovered ? 0.8 : 0.5))
                             .frame(width: 14, height: 14)
-                            .background(Circle().fill(Color.secondary.opacity(0.15)))
+                            .background(Circle().fill(Color.secondary.opacity(isAddPageHovered ? 0.25 : 0.15)))
+                            .scaleEffect(isAddPageHovered ? 1.1 : 1.0)
                     }
                     .buttonStyle(.plain)
                     .help("新建页面")
+                    .onHover { hovering in
+                        withAnimation(.easeOut(duration: 0.12)) {
+                            isAddPageHovered = hovering
+                        }
+                    }
                 }
                 .padding(.horizontal, 8)
                 .padding(.vertical, 5)
@@ -1172,9 +1241,7 @@ struct LayerGridView: View {
                 }
 
                 if page > 0 {
-                    withAnimation {
-                        page -= 1
-                    }
+                    goToPage(page - 1)
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: .scrollNextPage)) { notification in
@@ -1185,9 +1252,7 @@ struct LayerGridView: View {
                 }
 
                 if page < pageCount - 1 {
-                    withAnimation {
-                        page += 1
-                    }
+                    goToPage(page + 1)
                 }
             }
             .overlay(alignment: .center) {
@@ -1223,10 +1288,15 @@ struct LayerGridView: View {
                 cellSize: cellSize,
                 spacing: gridSpacing
             )
+            .id(page)
             .frame(width: gridContentSize.width, height: gridContentSize.height)
             .padding(.horizontal, 20)
             .padding(.bottom, 6)
-            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: currentPageItems.map { "\($0.id)-\($0.page)-\($0.slot)" })
+            .transition(.asymmetric(
+                insertion: .move(edge: pageMovedForward ? .trailing : .leading).combined(with: .opacity),
+                removal: .move(edge: pageMovedForward ? .leading : .trailing).combined(with: .opacity)
+            ))
+            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: page)
 
             if let emptyMessage, currentPageItems.isEmpty {
                 EmptyStateHintView(message: emptyMessage)
@@ -1235,21 +1305,41 @@ struct LayerGridView: View {
             }
 
             if pageCount > 1 {
-                HStack(spacing: 6) {
-                    ForEach(0..<pageCount, id: \.self) { index in
-                        PageIndicatorDot(
-                            index: index,
-                            currentPage: $page,
-                            layer: layer,
-                            pageScopeAppBundleId: pageScopeAppBundleId,
-                            itemsPerPage: itemsPerPage
-                        )
-                        .frame(width: 14, height: 14)
-                            .onTapGesture {
-                                withAnimation {
-                                    page = index
+                HStack(spacing: 8) {
+                    PageChevronButton(
+                        systemName: "chevron.up",
+                        isEnabled: page > 0,
+                        helpText: "上一页（也可将鼠标悬停在此层区域滚动滚轮）"
+                    ) {
+                        if page > 0 {
+                            goToPage(page - 1)
+                        }
+                    }
+
+                    HStack(spacing: 6) {
+                        ForEach(0..<pageCount, id: \.self) { index in
+                            PageIndicatorDot(
+                                index: index,
+                                currentPage: $page,
+                                layer: layer,
+                                pageScopeAppBundleId: pageScopeAppBundleId,
+                                itemsPerPage: itemsPerPage
+                            )
+                            .frame(width: 14, height: 14)
+                                .onTapGesture {
+                                    goToPage(index)
                                 }
-                            }
+                        }
+                    }
+
+                    PageChevronButton(
+                        systemName: "chevron.down",
+                        isEnabled: page < pageCount - 1,
+                        helpText: "下一页（也可将鼠标悬停在此层区域滚动滚轮）"
+                    ) {
+                        if page < pageCount - 1 {
+                            goToPage(page + 1)
+                        }
                     }
                 }
                 .padding(.bottom, 2)
@@ -1290,6 +1380,7 @@ struct LayerGridView: View {
             }
 
             PanelDragManager.shared.unregisterSlotTargets(layer: layer, appBundleIdentifier: pageScopeAppBundleId)
+            pageMovedForward = requestedPage >= page
             withAnimation(.easeInOut(duration: 0.18)) {
                 page = requestedPage
             }
@@ -1419,6 +1510,7 @@ struct DesktopGridView: NSViewRepresentable {
         private var cellSize: CGSize = .zero
         private var spacing: CGFloat = 0
         private var mouseDownIndex: Int?
+        private var mouseDownPoint: CGPoint = .zero
         private var draggingItem: PanelGridSlot?
         private var isDraggingItem = false
         private var didCrossPageDrag = false
@@ -1432,6 +1524,7 @@ struct DesktopGridView: NSViewRepresentable {
         private let edgeSwitchReleaseInset: CGFloat = 92
         private let pageSwitchDelay: TimeInterval = 0.42
         private let minimumVisualMoveInterval: TimeInterval = 1.0 / 120.0
+        private let minimumDragDistance: CGFloat = 8
 
         func configure(
             itemsBySlot: [Int: PanelItem],
@@ -1492,6 +1585,7 @@ struct DesktopGridView: NSViewRepresentable {
         func mouseDown(at point: CGPoint) {
             cancelPendingPageSwitch()
             mouseDownIndex = indexAt(point)
+            mouseDownPoint = point
             isDraggingItem = false
             draggingItem = nil
             didCrossPageDrag = false
@@ -1509,7 +1603,16 @@ struct DesktopGridView: NSViewRepresentable {
                 return
             }
 
+            // Check minimum drag distance before starting drag
             if !isDraggingItem {
+                let deltaX = point.x - mouseDownPoint.x
+                let deltaY = point.y - mouseDownPoint.y
+                let distance = sqrt(deltaX * deltaX + deltaY * deltaY)
+
+                if distance < minimumDragDistance {
+                    return
+                }
+
                 isDraggingItem = true
                 draggingItem = slots[sourceIndex]
                 PanelGridDragVisualState.shared.begin(context: dragContext)
@@ -1999,14 +2102,14 @@ struct PanelCollectionCellView: View {
 
                     RoundedRectangle(cornerRadius: 10)
                         .stroke(
-                            shouldShowHover ? Color.secondary.opacity(0.4) : Color.secondary.opacity(0.15),
+                            shouldShowHover ? Color.secondary.opacity(0.4) : Color.secondary.opacity(0.25),
                             style: StrokeStyle(lineWidth: 1, dash: [3, 3])
                         )
 
                     VStack(spacing: 6) {
                         Image(systemName: "plus")
                             .font(.system(size: shouldShowHover ? 20 : 16, weight: .medium))
-                            .foregroundColor(.secondary.opacity(shouldShowHover ? 0.6 : 0.35))
+                            .foregroundColor(.secondary.opacity(shouldShowHover ? 0.6 : 0.5))
 
                         if shouldShowHover {
                             Text("添加")
@@ -2185,6 +2288,8 @@ struct EmptySlotView: View {
 
 // MARK: - Drag Handle
 struct DragHandleView: View {
+    @State private var isHovered = false
+
     var body: some View {
         VStack(spacing: 4) {
             Spacer()
@@ -2192,20 +2297,24 @@ struct DragHandleView: View {
             HStack(spacing: 4) {
                 ForEach(0..<3) { _ in
                     Circle()
-                        .fill(Color.secondary.opacity(0.5))
-                        .frame(width: 4, height: 4)
+                        .fill(Color.secondary.opacity(isHovered ? 0.7 : 0.6))
+                        .frame(width: 5, height: 5)
                 }
             }
             Spacer()
         }
         .frame(maxWidth: .infinity)
         .contentShape(Rectangle())
+        .onHover { hovering in
+            isHovered = hovering
+        }
     }
 }
 
 struct GroupNameHeaderView: View {
     let groupName: String?
     let onEdit: () -> Void
+    @State private var isHovered = false
 
     private var hasGroupName: Bool {
         !(groupName?.isEmpty ?? true)
@@ -2234,10 +2343,26 @@ struct GroupNameHeaderView: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
-        .background(Color.primary.opacity(0.04))
+        .background(Color.primary.opacity(isHovered ? 0.08 : 0.04))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.secondary.opacity(0.2), lineWidth: 0.5)
+        )
         .cornerRadius(8)
         .frame(maxWidth: 180)
         .help(hasGroupName ? "编辑分组名称" : "为当前页命名")
+        .contentShape(Rectangle())
+        .onHover { hovering in
+            isHovered = hovering
+            if hovering {
+                NSCursor.pointingHand.push()
+            } else {
+                NSCursor.pop()
+            }
+        }
+        .onTapGesture {
+            onEdit()
+        }
     }
 }
 
@@ -2312,7 +2437,45 @@ struct ItemContentView: View {
                 .truncationMode(.tail)
                 .foregroundColor(.primary)
                 .frame(maxWidth: 70)
+                .help(item.name)
         }
+    }
+}
+
+// MARK: - Page Chevron Button
+struct PageChevronButton: View {
+    let systemName: String
+    let isEnabled: Bool
+    let helpText: String
+    let action: () -> Void
+
+    @State private var isHovered = false
+
+    var body: some View {
+        Image(systemName: systemName)
+            .font(.system(size: 8, weight: .bold))
+            .foregroundColor(.secondary.opacity(isEnabled ? (isHovered ? 0.85 : 0.55) : 0.15))
+            .frame(width: 16, height: 16)
+            .background(
+                Circle().fill(Color.secondary.opacity(isEnabled && isHovered ? 0.15 : 0))
+            )
+            .scaleEffect(isEnabled && isHovered ? 1.15 : 1.0)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                action()
+            }
+            .help(helpText)
+            .onHover { hovering in
+                guard isEnabled else { return }
+                withAnimation(.easeOut(duration: 0.12)) {
+                    isHovered = hovering
+                }
+                if hovering {
+                    NSCursor.pointingHand.push()
+                } else {
+                    NSCursor.pop()
+                }
+            }
     }
 }
 
@@ -2324,6 +2487,7 @@ struct PageIndicatorDot: View {
     let pageScopeAppBundleId: String?
     let itemsPerPage: Int
     @ObservedObject private var dragManager = PanelDragManager.shared
+    @State private var isHovered = false
 
     private var dropTarget: PanelDropTarget {
         PanelDropTarget(
@@ -2340,18 +2504,34 @@ struct PageIndicatorDot: View {
         dragManager.isHovered(dropTarget)
     }
 
+    private var isCurrent: Bool {
+        currentPage == index
+    }
+
     var body: some View {
         Circle()
-            .fill(currentPage == index ? Color.accentColor : Color.secondary.opacity(0.3))
-            .frame(width: isDropTarget ? 9 : 6, height: isDropTarget ? 9 : 6)
+            .fill(isCurrent ? Color.accentColor : Color.secondary.opacity(isHovered ? 0.75 : 0.5))
+            .frame(
+                width: isDropTarget ? 10 : (isCurrent ? 9 : (isHovered ? 8 : 7)),
+                height: isDropTarget ? 10 : (isCurrent ? 9 : (isHovered ? 8 : 7))
+            )
             .overlay(
                 Circle()
                     .stroke(isDropTarget ? Color.accentColor.opacity(0.55) : Color.clear, lineWidth: 3)
-                    .frame(width: 13, height: 13)
+                    .frame(width: 14, height: 14)
             )
             .contentShape(Circle())
             .background(PanelDropTargetFrameReader(target: dropTarget))
             .animation(.easeInOut(duration: 0.15), value: isDropTarget)
+            .animation(.easeOut(duration: 0.12), value: isHovered)
+            .onHover { hovering in
+                isHovered = hovering
+                if hovering {
+                    NSCursor.pointingHand.push()
+                } else {
+                    NSCursor.pop()
+                }
+            }
     }
 }
 
@@ -2392,7 +2572,7 @@ struct ItemButton: View {
         ItemContentView(item: item, isHovered: isHovered)
         .frame(width: cellSize.width, height: cellSize.height)
         .scaleEffect(scale)
-        .opacity(isDraggedItem ? 0.18 : 1.0)
+        .opacity(isDraggedItem ? 0.55 : 1.0)
         .overlay(
             RoundedRectangle(cornerRadius: 10)
                 .stroke(isDropTarget ? Color.accentColor : Color.clear, lineWidth: 2)
@@ -2411,6 +2591,22 @@ struct ItemButton: View {
             Button("编辑") {
                 AddItemWindowManager.shared.showEditItemWindow(item: item)
             }
+
+            switch item.type {
+            case .application:
+                Button("在 Finder 中显示") {
+                    NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: item.path)])
+                }
+            case .website:
+                Button("复制链接") {
+                    let pasteboard = NSPasteboard.general
+                    pasteboard.clearContents()
+                    pasteboard.setString(item.path, forType: .string)
+                }
+            }
+
+            Divider()
+
             Button("删除", role: .destructive) {
                 DataManager.shared.deleteItem(item)
             }

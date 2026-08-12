@@ -256,15 +256,45 @@ struct GridSettingsTab: View {
 struct AppearanceTab: View {
     @ObservedObject var settingsManager = SettingsManager.shared
     @State private var tempOpacity: Double = 1.0
+    @State private var tempMaterialStyle: PanelMaterialStyle = .sidebar
 
     var hasChanges: Bool {
-        tempOpacity != settingsManager.settings.panelOpacity
+        tempOpacity != settingsManager.settings.panelOpacity ||
+        tempMaterialStyle != settingsManager.settings.panelMaterialStyle
     }
 
     var body: some View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Image(systemName: "square.on.square")
+                                .foregroundColor(.blue)
+                                .frame(width: 24)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("风格")
+                                    .font(.system(size: 13, weight: .medium))
+                                Text("选择面板的毛玻璃材质")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                        }
+
+                        Picker("", selection: $tempMaterialStyle) {
+                            ForEach(PanelMaterialStyle.allCases) { style in
+                                Text(style.displayName).tag(style)
+                            }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.menu)
+                        .frame(width: 200)
+                        .padding(.leading, 32)
+                    }
+
+                    Divider()
+
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {
                             Image(systemName: "circle.lefthalf.filled")
@@ -301,21 +331,24 @@ struct AppearanceTab: View {
 
                         HStack {
                             Spacer()
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(.ultraThinMaterial)
-                                .opacity(tempOpacity)
-                                .frame(width: 240, height: 160)
-                                .overlay(
-                                    VStack(spacing: 8) {
-                                        Image(systemName: "square.grid.3x3")
-                                            .font(.system(size: 36))
-                                            .foregroundColor(.blue)
-                                        Text("\(Int(tempOpacity * 100))%")
-                                            .font(.system(size: 13, weight: .medium))
-                                            .foregroundColor(.secondary)
-                                    }
+                            ZStack {
+                                PanelStylePreview(
+                                    material: tempMaterialStyle.material,
+                                    opacity: tempOpacity
                                 )
-                                .shadow(radius: 8)
+                                .frame(width: 240, height: 160)
+
+                                VStack(spacing: 8) {
+                                    Image(systemName: "square.grid.3x3")
+                                        .font(.system(size: 36))
+                                        .foregroundColor(.blue)
+                                    Text("\(Int(tempOpacity * 100))%")
+                                        .font(.system(size: 13, weight: .medium))
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                            .shadow(radius: 8)
                             Spacer()
                         }
                         .padding(.leading, 32)
@@ -364,10 +397,37 @@ struct AppearanceTab: View {
 
     private func loadCurrentSettings() {
         tempOpacity = settingsManager.settings.panelOpacity
+        tempMaterialStyle = settingsManager.settings.panelMaterialStyle
     }
 
     private func applyChanges() {
-        settingsManager.settings.panelOpacity = tempOpacity
+        settingsManager.batchUpdate { settings in
+            settings.panelOpacity = tempOpacity
+            settings.panelMaterialStyle = tempMaterialStyle
+        }
+    }
+}
+
+// MARK: - Panel Style Preview
+
+struct PanelStylePreview: NSViewRepresentable {
+    let material: NSVisualEffectView.Material
+    let opacity: Double
+
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.blendingMode = .behindWindow
+        view.state = .active
+        view.isEmphasized = true
+        view.wantsLayer = true
+        view.layer?.cornerRadius = 14
+        view.layer?.masksToBounds = true
+        return view
+    }
+
+    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
+        nsView.material = material
+        nsView.alphaValue = opacity
     }
 }
 

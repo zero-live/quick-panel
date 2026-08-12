@@ -74,7 +74,7 @@ class PanelWindowManager {
         window.level = .floating
         window.collectionBehavior = [.canJoinAllSpaces, .stationary]
         window.isMovableByWindowBackground = false  // Disable automatic dragging
-        window.hasShadow = false
+        window.hasShadow = true
         window.alphaValue = settings.panelOpacity
 
         if let contentView = window.contentView {
