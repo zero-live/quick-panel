@@ -18,19 +18,21 @@ struct PanelItem: Identifiable, Codable {
     var name: String
     var type: ItemType
     var path: String  // App path or website URL
-    var iconData: Data?  // Custom icon (PNG data)
+    var iconData: Data?  // Legacy inline icon data, migrated to iconFileName after loading
+    var iconFileName: String?  // Custom icon stored in Application Support/Quick Panel/Icons
     var browserPath: String?  // Optional: specific browser for websites
     var layer: PanelLayer  // Upper or lower layer
     var appBundleIdentifier: String?  // For lower layer: bind to specific app (e.g., "com.microsoft.edgemac")
     var page: Int
     var slot: Int
 
-    init(id: UUID = UUID(), name: String, type: ItemType, path: String, iconData: Data? = nil, browserPath: String? = nil, layer: PanelLayer = .upper, appBundleIdentifier: String? = nil, page: Int, slot: Int) {
+    init(id: UUID = UUID(), name: String, type: ItemType, path: String, iconData: Data? = nil, iconFileName: String? = nil, browserPath: String? = nil, layer: PanelLayer = .upper, appBundleIdentifier: String? = nil, page: Int, slot: Int) {
         self.id = id
         self.name = name
         self.type = type
         self.path = path
         self.iconData = iconData
+        self.iconFileName = iconFileName
         self.browserPath = browserPath
         self.layer = layer
         self.appBundleIdentifier = appBundleIdentifier
@@ -41,7 +43,7 @@ struct PanelItem: Identifiable, Codable {
     // Older configurations did not persist page and slot. Keep those files
     // readable so an app update never turns an existing panel into an empty one.
     private enum CodingKeys: String, CodingKey {
-        case id, name, type, path, iconData, browserPath, layer, appBundleIdentifier, page, slot
+        case id, name, type, path, iconData, iconFileName, browserPath, layer, appBundleIdentifier, page, slot
     }
 
     init(from decoder: Decoder) throws {
@@ -52,6 +54,7 @@ struct PanelItem: Identifiable, Codable {
         type = try container.decode(ItemType.self, forKey: .type)
         path = try container.decode(String.self, forKey: .path)
         iconData = try container.decodeIfPresent(Data.self, forKey: .iconData)
+        iconFileName = try container.decodeIfPresent(String.self, forKey: .iconFileName)
         browserPath = try container.decodeIfPresent(String.self, forKey: .browserPath)
         layer = try container.decodeIfPresent(PanelLayer.self, forKey: .layer) ?? .upper
         appBundleIdentifier = try container.decodeIfPresent(String.self, forKey: .appBundleIdentifier)
@@ -61,8 +64,7 @@ struct PanelItem: Identifiable, Codable {
 
     // Helper to get icon synchronously
     func getIcon() -> NSImage? {
-        // If custom icon data exists, use it
-        if let iconData = iconData, let image = NSImage(data: iconData) {
+        if let image = customIcon() {
             return image
         }
 
@@ -82,8 +84,7 @@ struct PanelItem: Identifiable, Codable {
 
     // Helper to load icon asynchronously (for websites)
     func loadIconAsync(completion: @escaping (NSImage?) -> Void) {
-        // If custom icon data exists, use it
-        if let iconData = iconData, let image = NSImage(data: iconData) {
+        if let image = customIcon() {
             completion(image)
             return
         }
@@ -97,5 +98,17 @@ struct PanelItem: Identifiable, Codable {
                 completion(image ?? self.getIcon())
             }
         }
+    }
+
+    func customIcon() -> NSImage? {
+        if let iconFileName, let image = IconStorage.shared.image(named: iconFileName) {
+            return image
+        }
+
+        if let iconData, let image = NSImage(data: iconData) {
+            return image
+        }
+
+        return nil
     }
 }

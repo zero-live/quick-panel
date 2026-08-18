@@ -45,14 +45,24 @@ class DataManager: ObservableObject {
     // MARK: - Load/Save
 
     func loadItems() {
-        if let loadedItems: [PanelItem] = loadValue(from: configFile, label: "项目配置") {
+        if var loadedItems: [PanelItem] = loadValue(from: configFile, label: "项目配置") {
+            let migratedLegacyIcons = loadedItems.indices.reduce(into: false) { didMigrate, index in
+                didMigrate = IconStorage.shared.migrateLegacyIcon(for: &loadedItems[index]) || didMigrate
+            }
+
             items = loadedItems
             normalizePositions(save: false)
+            if migratedLegacyIcons {
+                saveItems()
+            }
         }
     }
 
     func saveItems() {
-        saveValue(items, to: configFile, label: "项目配置")
+        guard saveValue(items, to: configFile, label: "项目配置") else { return }
+        IconStorage.shared.removeUnreferencedIcons(
+            referencedBy: Set(items.compactMap(\.iconFileName))
+        )
     }
 
     private func loadValue<Value: Decodable>(from fileURL: URL, label: String) -> Value? {
@@ -91,14 +101,17 @@ class DataManager: ObservableObject {
         return nil
     }
 
-    private func saveValue<Value: Encodable>(_ value: Value, to fileURL: URL, label: String) {
+    @discardableResult
+    private func saveValue<Value: Encodable>(_ value: Value, to fileURL: URL, label: String) -> Bool {
         do {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             let data = try encoder.encode(value)
             try writeAtomically(data, to: fileURL)
+            return true
         } catch {
             AppLogger.error("保存\(label)失败：\(error.localizedDescription)", category: logCategory)
+            return false
         }
     }
 

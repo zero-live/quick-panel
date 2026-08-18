@@ -382,9 +382,16 @@ struct AddItemView: View {
             return
         }
 
-        var iconData: Data?
-        if let icon = customIcon, let tiffData = icon.tiffRepresentation {
-            iconData = tiffData
+        let itemID = UUID()
+        let iconFileName: String?
+        if let customIcon {
+            guard let savedFileName = IconStorage.shared.save(customIcon, for: itemID) else {
+                validationMessage = "保存图标失败，请重试或选择其他图标。"
+                return
+            }
+            iconFileName = savedFileName
+        } else {
+            iconFileName = nil
         }
 
         let bindingBundleId = layer == .lower ? selectedAppBundleId : nil
@@ -400,10 +407,11 @@ struct AddItemView: View {
         )
 
         let newItem = PanelItem(
+            id: itemID,
             name: name,
             type: itemType,
             path: validatedPath,
-            iconData: iconData,
+            iconFileName: iconFileName,
             browserPath: browserPath,
             layer: layer,
             appBundleIdentifier: bindingBundleId,
@@ -466,7 +474,7 @@ struct EditItemView: View {
         _layer = State(initialValue: item.layer)
         _path = State(initialValue: item.path)
         _browserPath = State(initialValue: item.browserPath)
-        _customIcon = State(initialValue: item.iconData != nil ? NSImage(data: item.iconData!) : nil)
+        _customIcon = State(initialValue: item.customIcon())
         _selectedAppBundleId = State(initialValue: item.appBundleIdentifier)
         _selectedAppName = State(initialValue: nil)
     }
@@ -764,17 +772,22 @@ struct EditItemView: View {
             return
         }
 
-        var iconData: Data?
-        if let icon = customIcon, let tiffData = icon.tiffRepresentation {
-            iconData = tiffData
-        }
-
         var updatedItem = item
         updatedItem.name = name
         updatedItem.layer = layer
         updatedItem.path = validatedPath
         updatedItem.browserPath = browserPath
-        updatedItem.iconData = iconData
+        if let customIcon {
+            guard let savedFileName = IconStorage.shared.save(customIcon, for: item.id) else {
+                validationMessage = "保存图标失败，请重试或选择其他图标。"
+                return
+            }
+            updatedItem.iconFileName = savedFileName
+            updatedItem.iconData = nil
+        } else {
+            updatedItem.iconFileName = nil
+            updatedItem.iconData = nil
+        }
         updatedItem.appBundleIdentifier = layer == .lower ? selectedAppBundleId : nil
 
         let targetBundleId = layer == .lower ? selectedAppBundleId : nil
