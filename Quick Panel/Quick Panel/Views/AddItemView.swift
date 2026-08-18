@@ -50,53 +50,21 @@ struct AddItemView: View {
                         .font(.title2)
                         .bold()
 
-                    Form {
-                        Picker("层级", selection: $layer) {
-                            Text("上层（常用）").tag(PanelLayer.upper)
-                            Text("下层").tag(PanelLayer.lower)
-                        }
-                        .pickerStyle(.segmented)
-
-                        if layer == .lower {
-                            lowerLayerBindingSection
-                        }
-
-                        Picker("类型", selection: $itemType) {
-                            Text("网站").tag(ItemType.website)
-                            Text("应用程序").tag(ItemType.application)
-                        }
-                        .pickerStyle(.segmented)
-
-                        TextField("名称", text: $name)
-
-                        if itemType == .application {
-                            HStack(spacing: 10) {
-                                TextField("应用路径", text: $path)
-                                Button("选择...") {
-                                    selectItemApplication()
-                                }
-                            }
-                        } else {
-                            VStack(alignment: .leading, spacing: 12) {
-                                TextField("网址", text: $path)
-                                    .textContentType(.URL)
-                                    .onChange(of: path) { _, newValue in
-                                        handleWebsiteURLChange(newValue)
-                                    }
-
-                                WebsiteIconEditor(
-                                    icon: customIcon,
-                                    isFetchingIcon: isFetchingIcon,
-                                    hasURL: !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                                    onFetchIcon: fetchWebsiteIcon,
-                                    onSelectLocalIcon: selectImageFile,
-                                    onClearIcon: {
-                                        customIcon = nil
-                                    }
-                                )
-                            }
-                        }
-                    }
+                    PanelItemEditorForm(
+                        itemType: $itemType,
+                        showsItemTypePicker: true,
+                        layer: $layer,
+                        name: $name,
+                        path: $path,
+                        lowerLayerBinding: { lowerLayerBindingSection },
+                        selectApplication: selectItemApplication,
+                        handleWebsiteURLChange: handleWebsiteURLChange,
+                        icon: customIcon,
+                        isFetchingIcon: isFetchingIcon,
+                        fetchWebsiteIcon: fetchWebsiteIcon,
+                        selectImageFile: selectImageFile,
+                        clearCustomIcon: { customIcon = nil }
+                    )
 
                     if let validationMessage {
                         InlineValidationMessage(message: validationMessage)
@@ -487,47 +455,21 @@ struct EditItemView: View {
                         .font(.title2)
                         .bold()
 
-                    Form {
-                        Picker("层级", selection: $layer) {
-                            Text("上层（常用）").tag(PanelLayer.upper)
-                            Text("下层").tag(PanelLayer.lower)
-                        }
-                        .pickerStyle(.segmented)
-
-                        if layer == .lower {
-                            lowerLayerBindingSection
-                        }
-
-                        TextField("名称", text: $name)
-
-                        if item.type == .application {
-                            HStack(spacing: 10) {
-                                TextField("应用路径", text: $path)
-                                Button("选择...") {
-                                    selectItemApplication()
-                                }
-                            }
-                        } else {
-                            VStack(alignment: .leading, spacing: 12) {
-                                TextField("网址", text: $path)
-                                    .textContentType(.URL)
-                                    .onChange(of: path) { _, newValue in
-                                        handleWebsiteURLChange(newValue)
-                                    }
-
-                                WebsiteIconEditor(
-                                    icon: customIcon,
-                                    isFetchingIcon: isFetchingIcon,
-                                    hasURL: !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                                    onFetchIcon: fetchWebsiteIcon,
-                                    onSelectLocalIcon: selectImageFile,
-                                    onClearIcon: {
-                                        customIcon = nil
-                                    }
-                                )
-                            }
-                        }
-                    }
+                    PanelItemEditorForm(
+                        itemType: .constant(item.type),
+                        showsItemTypePicker: false,
+                        layer: $layer,
+                        name: $name,
+                        path: $path,
+                        lowerLayerBinding: { lowerLayerBindingSection },
+                        selectApplication: selectItemApplication,
+                        handleWebsiteURLChange: handleWebsiteURLChange,
+                        icon: customIcon,
+                        isFetchingIcon: isFetchingIcon,
+                        fetchWebsiteIcon: fetchWebsiteIcon,
+                        selectImageFile: selectImageFile,
+                        clearCustomIcon: { customIcon = nil }
+                    )
 
                     if let validationMessage {
                         InlineValidationMessage(message: validationMessage)
@@ -831,6 +773,72 @@ struct EditItemView: View {
 
     private func normalizedWebsiteURL() -> URL? {
         URLNormalizer.normalizedURL(from: path)
+    }
+}
+
+private struct PanelItemEditorForm<LowerLayerBinding: View>: View {
+    @Binding var itemType: ItemType
+    let showsItemTypePicker: Bool
+    @Binding var layer: PanelLayer
+    @Binding var name: String
+    @Binding var path: String
+    let lowerLayerBinding: () -> LowerLayerBinding
+    let selectApplication: () -> Void
+    let handleWebsiteURLChange: (String) -> Void
+    let icon: NSImage?
+    let isFetchingIcon: Bool
+    let fetchWebsiteIcon: () -> Void
+    let selectImageFile: () -> Void
+    let clearCustomIcon: () -> Void
+
+    var body: some View {
+        Form {
+            Picker("层级", selection: $layer) {
+                Text("上层（常用）").tag(PanelLayer.upper)
+                Text("下层").tag(PanelLayer.lower)
+            }
+            .pickerStyle(.segmented)
+
+            if layer == .lower {
+                lowerLayerBinding()
+            }
+
+            if showsItemTypePicker {
+                Picker("类型", selection: $itemType) {
+                    Text("网站").tag(ItemType.website)
+                    Text("应用程序").tag(ItemType.application)
+                }
+                .pickerStyle(.segmented)
+            }
+
+            TextField("名称", text: $name)
+
+            if itemType == .application {
+                HStack(spacing: 10) {
+                    TextField("应用路径", text: $path)
+                    Button("选择...") {
+                        selectApplication()
+                    }
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 12) {
+                    TextField("网址", text: $path)
+                        .textContentType(.URL)
+                        .onChange(of: path) { _, newValue in
+                            handleWebsiteURLChange(newValue)
+                        }
+
+                    WebsiteIconEditor(
+                        icon: icon,
+                        isFetchingIcon: isFetchingIcon,
+                        hasURL: !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                        onFetchIcon: fetchWebsiteIcon,
+                        onSelectLocalIcon: selectImageFile,
+                        onClearIcon: clearCustomIcon
+                    )
+                }
+            }
+        }
     }
 }
 
