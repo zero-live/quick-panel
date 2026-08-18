@@ -17,9 +17,10 @@ class LoginItemManager {
     func setLaunchAtLogin(_ enabled: Bool) -> Bool {
         if #available(macOS 13.0, *) {
             do {
-                if enabled {
+                let status = SMAppService.mainApp.status
+                if enabled, status != .enabled {
                     try SMAppService.mainApp.register()
-                } else {
+                } else if !enabled, status != .notRegistered {
                     try SMAppService.mainApp.unregister()
                 }
                 AppLogger.notice("开机启动状态更新成功，enabled=\(enabled)。", category: logCategory)

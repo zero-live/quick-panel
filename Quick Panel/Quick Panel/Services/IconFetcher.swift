@@ -13,12 +13,24 @@ struct WebsiteMetadata {
     let icon: NSImage?
 }
 
+private final class WebsiteMetadataBox: NSObject {
+    let metadata: WebsiteMetadata
+
+    init(_ metadata: WebsiteMetadata) {
+        self.metadata = metadata
+    }
+}
+
 class IconFetcher {
     static let shared = IconFetcher()
 
     private init() {}
     private let userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
     private let logCategory: AppLogCategory = .network
+    private let metadataCache = NSCache<NSString, WebsiteMetadataBox>()
+    private let maximumHTMLBytes = 2 * 1024 * 1024
+    private let maximumImageBytes = 5 * 1024 * 1024
+    private let maximumIconCandidates = 4
 
     // MARK: - Favicon Fetching
 
@@ -39,6 +51,14 @@ class IconFetcher {
             return
         }
 
+        let cacheKey = url.absoluteString as NSString
+        if let cachedMetadata = metadataCache.object(forKey: cacheKey)?.metadata {
+            DispatchQueue.main.async {
+                completion(cachedMetadata)
+            }
+            return
+        }
+
         AppLogger.debug("开始抓取网站元数据：\(url.absoluteString)。", category: logCategory)
         let directCandidates = self.defaultIconCandidates(for: host, scheme: scheme)
 
@@ -48,9 +68,11 @@ class IconFetcher {
             let iconCandidates = self.mergeIconCandidates(primary: htmlIconCandidates, fallback: directCandidates)
 
             self.fetchBestFavicon(from: iconCandidates) { image in
+                let metadata = WebsiteMetadata(title: htmlTitle, icon: image)
+                self.metadataCache.setObject(WebsiteMetadataBox(metadata), forKey: cacheKey)
                 DispatchQueue.main.async {
                     AppLogger.info("网站元数据抓取完成：url=\(url.absoluteString)，title=\(htmlTitle ?? "nil")，icon=\(image != nil ? "yes" : "no")。", category: self.logCategory)
-                    completion(WebsiteMetadata(title: htmlTitle, icon: image))
+                    completion(metadata)
                 }
             }
         }
@@ -81,33 +103,34 @@ class IconFetcher {
             return lhs.url.absoluteString < rhs.url.absoluteString
         }
 
-        let dispatchGroup = DispatchGroup()
-        let queue = DispatchQueue(label: "IconFetcher.candidate-selection")
-        var bestImage: NSImage?
-        var bestScore = -1
+        var candidatesToTry = Array(sortedCandidates.prefix(maximumIconCandidates))
+        if let standardFallback = sortedCandidates.first(where: {
+            $0.url.lastPathComponent.lowercased() == "favicon.ico" ||
+            $0.url.lastPathComponent.lowercased() == "favicon.png"
+        }), !candidatesToTry.contains(where: { $0.url == standardFallback.url }) {
+            candidatesToTry.append(standardFallback)
+        }
 
-        for candidate in sortedCandidates {
-            dispatchGroup.enter()
-            fetchImage(at: candidate.url) { image in
-                defer { dispatchGroup.leave() }
+        func fetchCandidate(at index: Int) {
+            guard index < candidatesToTry.count else {
+                DispatchQueue.main.async {
+                    completion(nil)
+                }
+                return
+            }
 
-                guard let image else { return }
-
-                let pixelArea = image.bestPixelArea
-                let score = max(pixelArea, candidate.declaredSize * candidate.declaredSize)
-
-                queue.sync {
-                    if score > bestScore {
-                        bestScore = score
-                        bestImage = image
+            fetchImage(at: candidatesToTry[index].url) { image in
+                if let image {
+                    DispatchQueue.main.async {
+                        completion(image)
                     }
+                } else {
+                    fetchCandidate(at: index + 1)
                 }
             }
         }
 
-        dispatchGroup.notify(queue: .main) {
-            completion(bestImage)
-        }
+        fetchCandidate(at: 0)
     }
 
     private func fetchImage(at url: URL, completion: @escaping (NSImage?) -> Void) {
@@ -132,9 +155,18 @@ class IconFetcher {
                     completion(nil)
                     return
                 }
+
+                guard httpResponse.expectedContentLength <= 0 || httpResponse.expectedContentLength <= Int64(self.maximumImageBytes) else {
+                    AppLogger.notice("图标文件过大，已跳过：\(url.absoluteString)。", category: self.logCategory)
+                    completion(nil)
+                    return
+                }
             }
 
-            guard let data else {
+            guard let data, data.count <= self.maximumImageBytes else {
+                if data != nil {
+                    AppLogger.notice("图标文件超过大小限制，已跳过：\(url.absoluteString)。", category: self.logCategory)
+                }
                 completion(nil)
                 return
             }
@@ -214,9 +246,18 @@ class IconFetcher {
                     completion(nil)
                     return
                 }
+
+                guard httpResponse.expectedContentLength <= 0 || httpResponse.expectedContentLength <= Int64(self.maximumHTMLBytes) else {
+                    AppLogger.notice("页面内容过大，已跳过元数据解析：\(baseURL.absoluteString)。", category: self.logCategory)
+                    completion(nil)
+                    return
+                }
             }
 
-            guard let data = data else {
+            guard let data = data, data.count <= self.maximumHTMLBytes else {
+                if data != nil {
+                    AppLogger.notice("页面内容超过大小限制，已跳过元数据解析：\(baseURL.absoluteString)。", category: self.logCategory)
+                }
                 completion(nil)
                 return
             }

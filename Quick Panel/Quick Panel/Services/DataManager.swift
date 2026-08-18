@@ -45,28 +45,85 @@ class DataManager: ObservableObject {
     // MARK: - Load/Save
 
     func loadItems() {
-        guard FileManager.default.fileExists(atPath: configFile.path) else {
-            AppLogger.notice("配置文件不存在，将使用空数据启动。", category: logCategory)
-            return
-        }
-
-        do {
-            let data = try Data(contentsOf: configFile)
-            items = try JSONDecoder().decode([PanelItem].self, from: data)
+        if let loadedItems: [PanelItem] = loadValue(from: configFile, label: "项目配置") {
+            items = loadedItems
             normalizePositions(save: false)
-        } catch {
-            AppLogger.error("读取项目配置失败：\(error.localizedDescription)", category: logCategory)
         }
     }
 
     func saveItems() {
+        saveValue(items, to: configFile, label: "项目配置")
+    }
+
+    private func loadValue<Value: Decodable>(from fileURL: URL, label: String) -> Value? {
+        let fileManager = FileManager.default
+        guard fileManager.fileExists(atPath: fileURL.path) else {
+            AppLogger.debug("\(label)文件不存在，跳过加载。", category: logCategory)
+            return nil
+        }
+
+        let backupURL = fileURL.appendingPathExtension("backup")
+        var primaryError: Error?
+
+        for candidateURL in [fileURL, backupURL] where fileManager.fileExists(atPath: candidateURL.path) {
+            do {
+                let data = try Data(contentsOf: candidateURL)
+                let value = try JSONDecoder().decode(Value.self, from: data)
+
+                if candidateURL == backupURL {
+                    archiveCorruptFile(at: fileURL)
+                    try data.write(to: fileURL, options: .atomic)
+                    AppLogger.notice("\(label)已从备份恢复。", category: logCategory)
+                }
+                return value
+            } catch {
+                if candidateURL == fileURL {
+                    primaryError = error
+                }
+                AppLogger.error("读取\(label)失败（\(candidateURL.lastPathComponent)）：\(error.localizedDescription)", category: logCategory)
+            }
+        }
+
+        archiveCorruptFile(at: fileURL)
+        if let primaryError {
+            AppLogger.error("\(label)无法恢复，原文件已保留为副本：\(primaryError.localizedDescription)", category: logCategory)
+        }
+        return nil
+    }
+
+    private func saveValue<Value: Encodable>(_ value: Value, to fileURL: URL, label: String) {
         do {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try encoder.encode(items)
-            try data.write(to: configFile)
+            let data = try encoder.encode(value)
+            try writeAtomically(data, to: fileURL)
         } catch {
-            AppLogger.error("保存项目配置失败：\(error.localizedDescription)", category: logCategory)
+            AppLogger.error("保存\(label)失败：\(error.localizedDescription)", category: logCategory)
+        }
+    }
+
+    private func writeAtomically(_ data: Data, to fileURL: URL) throws {
+        let fileManager = FileManager.default
+        if fileManager.fileExists(atPath: fileURL.path) {
+            let currentData = try Data(contentsOf: fileURL)
+            try currentData.write(to: fileURL.appendingPathExtension("backup"), options: .atomic)
+        }
+        try data.write(to: fileURL, options: .atomic)
+    }
+
+    private func archiveCorruptFile(at fileURL: URL) {
+        let fileManager = FileManager.default
+        guard fileManager.fileExists(atPath: fileURL.path) else { return }
+
+        let timestamp = Int(Date().timeIntervalSince1970)
+        let archiveURL = fileURL.deletingLastPathComponent().appendingPathComponent(
+            "\(fileURL.lastPathComponent).corrupt-\(timestamp)"
+        )
+        do {
+            try fileManager.copyItem(at: fileURL, to: archiveURL)
+            AppLogger.notice("已保留无法读取的配置副本：\(archiveURL.lastPathComponent)。", category: logCategory)
+        } catch {
+            AppLogger.error("保留异常配置副本失败：\(error.localizedDescription)", category: logCategory)
         }
     }
 
@@ -269,28 +326,13 @@ class DataManager: ObservableObject {
     // MARK: - Page Groups
 
     func loadPageGroups() {
-        guard FileManager.default.fileExists(atPath: groupsFile.path) else {
-            AppLogger.debug("分页分组文件不存在，跳过加载。", category: logCategory)
-            return
-        }
-
-        do {
-            let data = try Data(contentsOf: groupsFile)
-            pageGroups = try JSONDecoder().decode(PageGroup.self, from: data)
-        } catch {
-            AppLogger.error("读取分页分组失败：\(error.localizedDescription)", category: logCategory)
+        if let loadedGroups: PageGroup = loadValue(from: groupsFile, label: "分页分组") {
+            pageGroups = loadedGroups
         }
     }
 
     func savePageGroups() {
-        do {
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try encoder.encode(pageGroups)
-            try data.write(to: groupsFile)
-        } catch {
-            AppLogger.error("保存分页分组失败：\(error.localizedDescription)", category: logCategory)
-        }
+        saveValue(pageGroups, to: groupsFile, label: "分页分组")
     }
 
     func getPageGroupName(layer: PanelLayer, page: Int, appBundleIdentifier: String? = nil) -> String? {
@@ -309,28 +351,13 @@ class DataManager: ObservableObject {
     // MARK: - Page Counts
 
     func loadPageCounts() {
-        guard FileManager.default.fileExists(atPath: pageCountsFile.path) else {
-            AppLogger.debug("分页数量文件不存在，跳过加载。", category: logCategory)
-            return
-        }
-
-        do {
-            let data = try Data(contentsOf: pageCountsFile)
-            pageCounts = try JSONDecoder().decode([String: Int].self, from: data)
-        } catch {
-            AppLogger.error("读取分页数量失败：\(error.localizedDescription)", category: logCategory)
+        if let loadedPageCounts: [String: Int] = loadValue(from: pageCountsFile, label: "分页数量") {
+            pageCounts = loadedPageCounts
         }
     }
 
     func savePageCounts() {
-        do {
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try encoder.encode(pageCounts)
-            try data.write(to: pageCountsFile)
-        } catch {
-            AppLogger.error("保存分页数量失败：\(error.localizedDescription)", category: logCategory)
-        }
+        saveValue(pageCounts, to: pageCountsFile, label: "分页数量")
     }
 
     func getPageCount(for layer: PanelLayer, appBundleIdentifier: String? = nil) -> Int {

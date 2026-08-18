@@ -81,6 +81,8 @@ struct AppSettings: Codable, Equatable {
     var lastUpdateCheckAt: Date? = nil
     var lowerPageMemory: [String: Int] = [:]
 
+    init() {}
+
     // Computed properties
     var upperItemsPerPage: Int {
         upperGridColumns * upperGridRows
@@ -135,6 +137,38 @@ struct AppSettings: Codable, Equatable {
     static var `default`: AppSettings {
         return AppSettings()
     }
+
+    // Settings files are user data that outlive app versions. Decode missing
+    // keys from their defaults instead of rejecting the complete file.
+    private enum CodingKeys: String, CodingKey {
+        case upperGridColumns, upperGridRows, lowerGridColumns, lowerGridRows
+        case itemSpacing, cellWidth, cellHeight, panelOpacity, panelMaterialStyle
+        case launchAtLogin, hotkeyEnabled, hotkeyKeyCode, hotkeyModifiers
+        case autoCheckForUpdates, skippedUpdateVersion, lastUpdateCheckAt, lowerPageMemory
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init()
+
+        upperGridColumns = try container.decodeIfPresent(Int.self, forKey: .upperGridColumns) ?? upperGridColumns
+        upperGridRows = try container.decodeIfPresent(Int.self, forKey: .upperGridRows) ?? upperGridRows
+        lowerGridColumns = try container.decodeIfPresent(Int.self, forKey: .lowerGridColumns) ?? lowerGridColumns
+        lowerGridRows = try container.decodeIfPresent(Int.self, forKey: .lowerGridRows) ?? lowerGridRows
+        itemSpacing = try container.decodeIfPresent(CGFloat.self, forKey: .itemSpacing) ?? itemSpacing
+        cellWidth = try container.decodeIfPresent(CGFloat.self, forKey: .cellWidth) ?? cellWidth
+        cellHeight = try container.decodeIfPresent(CGFloat.self, forKey: .cellHeight) ?? cellHeight
+        panelOpacity = try container.decodeIfPresent(Double.self, forKey: .panelOpacity) ?? panelOpacity
+        panelMaterialStyle = try container.decodeIfPresent(PanelMaterialStyle.self, forKey: .panelMaterialStyle) ?? panelMaterialStyle
+        launchAtLogin = try container.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? launchAtLogin
+        hotkeyEnabled = try container.decodeIfPresent(Bool.self, forKey: .hotkeyEnabled) ?? hotkeyEnabled
+        hotkeyKeyCode = try container.decodeIfPresent(UInt32.self, forKey: .hotkeyKeyCode) ?? hotkeyKeyCode
+        hotkeyModifiers = try container.decodeIfPresent(UInt32.self, forKey: .hotkeyModifiers) ?? hotkeyModifiers
+        autoCheckForUpdates = try container.decodeIfPresent(Bool.self, forKey: .autoCheckForUpdates) ?? autoCheckForUpdates
+        skippedUpdateVersion = try container.decodeIfPresent(String.self, forKey: .skippedUpdateVersion)
+        lastUpdateCheckAt = try container.decodeIfPresent(Date.self, forKey: .lastUpdateCheckAt)
+        lowerPageMemory = try container.decodeIfPresent([String: Int].self, forKey: .lowerPageMemory) ?? lowerPageMemory
+    }
 }
 
 // MARK: - SettingsManager
@@ -144,6 +178,7 @@ class SettingsManager: ObservableObject {
 
     @Published var settings: AppSettings {
         didSet {
+            guard !isLoadingSettings else { return }
             var validatedSettings = settings
             validatedSettings.validate()
             if validatedSettings != settings {
@@ -160,6 +195,7 @@ class SettingsManager: ObservableObject {
     private let configDirectory: URL
     private let settingsFile: URL
     private var isSuppressingSettingsDidChange = false
+    private var isLoadingSettings = false
 
     private init() {
         // Setup config directory
@@ -179,17 +215,33 @@ class SettingsManager: ObservableObject {
     // MARK: - Load/Save
 
     private func loadSettings() {
-        guard FileManager.default.fileExists(atPath: settingsFile.path) else {
-            return
+        let fileManager = FileManager.default
+        guard fileManager.fileExists(atPath: settingsFile.path) else { return }
+
+        let backupURL = settingsFile.appendingPathExtension("backup")
+        for candidateURL in [settingsFile, backupURL] where fileManager.fileExists(atPath: candidateURL.path) {
+            do {
+                let data = try Data(contentsOf: candidateURL)
+                var loadedSettings = try JSONDecoder().decode(AppSettings.self, from: data)
+                loadedSettings.validate()
+
+                if candidateURL == backupURL {
+                    archiveCorruptSettingsFile()
+                    try data.write(to: settingsFile, options: .atomic)
+                    AppLogger.notice("设置已从备份恢复。", category: .data)
+                }
+
+                isLoadingSettings = true
+                settings = loadedSettings
+                isLoadingSettings = false
+                return
+            } catch {
+                AppLogger.error("读取设置失败（\(candidateURL.lastPathComponent)）：\(error.localizedDescription)", category: .data)
+            }
         }
 
-        do {
-            let data = try Data(contentsOf: settingsFile)
-            var loadedSettings = try JSONDecoder().decode(AppSettings.self, from: data)
-            loadedSettings.validate()
-            settings = loadedSettings
-        } catch {
-        }
+        archiveCorruptSettingsFile()
+        AppLogger.error("设置无法恢复，已使用默认设置启动。", category: .data)
     }
 
     private func saveSettings() {
@@ -197,14 +249,46 @@ class SettingsManager: ObservableObject {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             let data = try encoder.encode(settings)
-            try data.write(to: settingsFile)
+            try writeSettingsAtomically(data)
         } catch {
+            AppLogger.error("保存设置失败：\(error.localizedDescription)", category: .data)
+        }
+    }
+
+    private func writeSettingsAtomically(_ data: Data) throws {
+        let fileManager = FileManager.default
+        if fileManager.fileExists(atPath: settingsFile.path) {
+            let currentData = try Data(contentsOf: settingsFile)
+            try currentData.write(to: settingsFile.appendingPathExtension("backup"), options: .atomic)
+        }
+        try data.write(to: settingsFile, options: .atomic)
+    }
+
+    private func archiveCorruptSettingsFile() {
+        let fileManager = FileManager.default
+        guard fileManager.fileExists(atPath: settingsFile.path) else { return }
+
+        let timestamp = Int(Date().timeIntervalSince1970)
+        let archiveURL = settingsFile.deletingLastPathComponent().appendingPathComponent(
+            "\(settingsFile.lastPathComponent).corrupt-\(timestamp)"
+        )
+        do {
+            try fileManager.copyItem(at: settingsFile, to: archiveURL)
+            AppLogger.notice("已保留无法读取的设置副本：\(archiveURL.lastPathComponent)。", category: .data)
+        } catch {
+            AppLogger.error("保留异常设置副本失败：\(error.localizedDescription)", category: .data)
         }
     }
 
     // MARK: - Public Methods
 
     func resetToDefaults() {
+        HotkeyManager.shared.updateHotkey(
+            keyCode: AppSettings.default.hotkeyKeyCode,
+            modifiers: AppSettings.default.hotkeyModifiers,
+            enabled: false
+        )
+        _ = LoginItemManager.shared.setLaunchAtLogin(false)
         settings = AppSettings.default
     }
 

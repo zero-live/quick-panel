@@ -17,6 +17,7 @@ class PanelWindowManager {
     private var lastScrollTime: TimeInterval = 0
     private var dragMonitor: Any?
     private var clickOutsideMonitor: Any?
+    private var localClickOutsideMonitor: Any?
     private var scrollWheelMonitor: Any?
 
     private init() {
@@ -125,17 +126,24 @@ class PanelWindowManager {
         }
 
         clickOutsideMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
-            guard let self = self, let panelWindow = self.panelWindow else { return }
+            self?.hidePanelIfNeeded()
+        }
 
-            if self.isVisible {
-                // Check if click is outside the panel window
-                let clickLocation = NSEvent.mouseLocation
-                let windowFrame = panelWindow.frame
+        if let localClickOutsideMonitor {
+            NSEvent.removeMonitor(localClickOutsideMonitor)
+            self.localClickOutsideMonitor = nil
+        }
 
-                if !windowFrame.contains(clickLocation) {
-                    self.hidePanel()
-                }
-            }
+        localClickOutsideMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+            self?.hidePanelIfNeeded()
+            return event
+        }
+    }
+
+    private func hidePanelIfNeeded() {
+        guard isVisible, let panelWindow else { return }
+        if !panelWindow.frame.contains(NSEvent.mouseLocation) {
+            hidePanel()
         }
     }
 
@@ -289,10 +297,16 @@ class PanelWindowManager {
         let newSize = NSSize(width: width, height: height)
 
         if abs(currentFrame.width - newSize.width) > 0.5 || abs(currentFrame.height - newSize.height) > 0.5 {
-            let newOrigin = CGPoint(
+            var newOrigin = CGPoint(
                 x: center.x - width / 2,
                 y: center.y - height / 2
             )
+
+            if let screen = screenContaining(point: center) {
+                let visibleFrame = screen.visibleFrame
+                newOrigin.x = min(max(newOrigin.x, visibleFrame.minX), max(visibleFrame.minX, visibleFrame.maxX - width))
+                newOrigin.y = min(max(newOrigin.y, visibleFrame.minY), max(visibleFrame.minY, visibleFrame.maxY - height))
+            }
 
             window.setFrame(
                 NSRect(origin: newOrigin, size: newSize),
@@ -319,6 +333,9 @@ class PanelWindowManager {
         }
         if let clickOutsideMonitor {
             NSEvent.removeMonitor(clickOutsideMonitor)
+        }
+        if let localClickOutsideMonitor {
+            NSEvent.removeMonitor(localClickOutsideMonitor)
         }
         if let scrollWheelMonitor {
             NSEvent.removeMonitor(scrollWheelMonitor)

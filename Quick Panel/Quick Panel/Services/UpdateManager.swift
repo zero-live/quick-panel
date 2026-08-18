@@ -82,7 +82,7 @@ class UpdateManager: ObservableObject {
             return firstDMG["browser_download_url"] as? String
         }
 
-        return assets.first?["browser_download_url"] as? String
+        return nil
     }
 
     private func persistLastCheckedAt(_ date: Date) {
@@ -133,13 +133,15 @@ class UpdateManager: ObservableObject {
         var request = URLRequest(url: url)
         request.timeoutInterval = 10
 
-        URLSession.shared.dataTask(with: request) { [weak self] data, _, error in
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 self.isChecking = false
                 self.persistLastCheckedAt(Date())
 
-                guard let data = data, error == nil,
+                guard let httpResponse = response as? HTTPURLResponse,
+                      (200...299).contains(httpResponse.statusCode),
+                      let data = data, error == nil,
                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                     self.lastErrorMessage = "无法连接到更新服务器，请稍后再试。"
                     AppLogger.error("检查更新失败：网络请求或解析失败。", category: self.logCategory)
@@ -212,7 +214,11 @@ class UpdateManager: ObservableObject {
     }
 
     func downloadAndInstall() {
-        guard let urlString = downloadURL, let url = URL(string: urlString) else {
+        guard !isDownloading else { return }
+        guard let urlString = downloadURL,
+              let url = URL(string: urlString),
+              url.scheme?.lowercased() == "https",
+              url.pathExtension.lowercased() == "dmg" else {
             lastErrorMessage = "未找到可用安装包，已为你打开发布页。"
             if let releasePage = URL(string: releasePageURL) {
                 NSWorkspace.shared.open(releasePage)
@@ -224,11 +230,15 @@ class UpdateManager: ObservableObject {
         downloadProgress = 0
 
         let session = URLSession(configuration: .default, delegate: nil, delegateQueue: .main)
-        let task = session.downloadTask(with: url) { [weak self] tempURL, _, error in
+        let task = session.downloadTask(with: url) { [weak self] tempURL, response, error in
             guard let self = self else { return }
-            self.isDownloading = false
+            DispatchQueue.main.async {
+                self.isDownloading = false
+            }
 
-            guard let tempURL = tempURL, error == nil else {
+            guard let httpResponse = response as? HTTPURLResponse,
+                  (200...299).contains(httpResponse.statusCode),
+                  let tempURL = tempURL, error == nil else {
                 DispatchQueue.main.async {
                     self.lastErrorMessage = "无法下载更新文件，请手动前往 Gitee 下载。"
                     AppLogger.error("更新包下载失败。", category: self.logCategory)
@@ -237,10 +247,19 @@ class UpdateManager: ObservableObject {
                 return
             }
 
-            let dmgName = url.lastPathComponent
+            let dmgName = "Quick Panel-\(self.latestVersion ?? "update")-\(UUID().uuidString).dmg"
             let destURL = FileManager.default.temporaryDirectory.appendingPathComponent(dmgName)
-            try? FileManager.default.removeItem(at: destURL)
-            try? FileManager.default.moveItem(at: tempURL, to: destURL)
+
+            do {
+                try FileManager.default.moveItem(at: tempURL, to: destURL)
+            } catch {
+                DispatchQueue.main.async {
+                    self.lastErrorMessage = "无法保存更新文件，请手动前往 Gitee 下载。"
+                    AppLogger.error("保存更新包失败：\(error.localizedDescription)", category: self.logCategory)
+                    self.showAlert(title: "下载失败", message: self.lastErrorMessage ?? "无法保存更新文件。")
+                }
+                return
+            }
 
             DispatchQueue.main.async {
                 self.lastErrorMessage = nil

@@ -38,6 +38,27 @@ struct PanelItem: Identifiable, Codable {
         self.slot = slot
     }
 
+    // Older configurations did not persist page and slot. Keep those files
+    // readable so an app update never turns an existing panel into an empty one.
+    private enum CodingKeys: String, CodingKey {
+        case id, name, type, path, iconData, browserPath, layer, appBundleIdentifier, page, slot
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        name = try container.decode(String.self, forKey: .name)
+        type = try container.decode(ItemType.self, forKey: .type)
+        path = try container.decode(String.self, forKey: .path)
+        iconData = try container.decodeIfPresent(Data.self, forKey: .iconData)
+        browserPath = try container.decodeIfPresent(String.self, forKey: .browserPath)
+        layer = try container.decodeIfPresent(PanelLayer.self, forKey: .layer) ?? .upper
+        appBundleIdentifier = try container.decodeIfPresent(String.self, forKey: .appBundleIdentifier)
+        page = max(0, try container.decodeIfPresent(Int.self, forKey: .page) ?? 0)
+        slot = max(0, try container.decodeIfPresent(Int.self, forKey: .slot) ?? 0)
+    }
+
     // Helper to get icon synchronously
     func getIcon() -> NSImage? {
         // If custom icon data exists, use it

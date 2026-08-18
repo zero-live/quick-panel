@@ -48,10 +48,13 @@ class HotkeyManager: ObservableObject {
     @Published var isEnabled: Bool = false
     @Published var currentKeyCode: UInt32 = 49       // Space
     @Published var currentModifiers: UInt32 = 0x0D00  // Cmd+Shift
+    @Published var registrationErrorMessage: String?
 
     private var hotkeyRef: EventHotKeyRef?
     private var eventHandlerRef: EventHandlerRef?
     private var retryWorkItem: DispatchWorkItem?
+    private var retryCount = 0
+    private let maximumRetryCount = 3
     private let logCategory: AppLogCategory = .app
 
     private init() {
@@ -76,12 +79,17 @@ class HotkeyManager: ObservableObject {
     func stop() {
         retryWorkItem?.cancel()
         retryWorkItem = nil
+        retryCount = 0
+        registrationErrorMessage = nil
         unregisterHotkey()
         removeEventHandler()
         AppLogger.info("全局快捷键监听已停止。", category: logCategory)
     }
 
     func updateHotkey(keyCode: UInt32, modifiers: UInt32, enabled: Bool) {
+        retryWorkItem?.cancel()
+        retryWorkItem = nil
+        retryCount = 0
         unregisterHotkey()
 
         currentKeyCode = keyCode
@@ -100,6 +108,7 @@ class HotkeyManager: ObservableObject {
             }
             registerHotkey()
         } else {
+            registrationErrorMessage = nil
             removeEventHandler()
         }
         AppLogger.notice("全局快捷键已更新：\(HotkeyManager.displayString(keyCode: keyCode, modifiers: modifiers))，enabled=\(enabled)。", category: logCategory)
@@ -159,8 +168,11 @@ class HotkeyManager: ObservableObject {
 
         if status == noErr {
             hotkeyRef = ref
+            retryCount = 0
+            registrationErrorMessage = nil
             AppLogger.debug("全局快捷键注册成功。", category: logCategory)
         } else {
+            registrationErrorMessage = hotkeyErrorMessage(for: status)
             AppLogger.error("注册全局快捷键失败，status=\(status)。", category: logCategory)
             scheduleRetryIfNeeded(for: status)
         }
@@ -179,18 +191,16 @@ class HotkeyManager: ObservableObject {
         guard hotkeyRef == nil else { return }
         guard retryWorkItem == nil else { return }
 
-        let retryableStatuses: Set<OSStatus> = [
-            OSStatus(eventHotKeyExistsErr),
-            OSStatus(eventInternalErr)
-        ]
-        let shouldRetry = retryableStatuses.contains(status)
-        guard shouldRetry else { return }
+        guard status == OSStatus(eventInternalErr), retryCount < maximumRetryCount else { return }
+
+        retryCount += 1
+        let delay = 0.8 * Double(retryCount)
 
         let workItem = DispatchWorkItem { [weak self] in
             guard let self = self else { return }
             self.retryWorkItem = nil
             guard self.isEnabled, self.hotkeyRef == nil else { return }
-            AppLogger.notice("尝试重新注册全局快捷键。", category: self.logCategory)
+            AppLogger.notice("尝试重新注册全局快捷键（\(self.retryCount)/\(self.maximumRetryCount)）。", category: self.logCategory)
             if self.eventHandlerRef == nil {
                 self.installEventHandler()
             }
@@ -198,7 +208,17 @@ class HotkeyManager: ObservableObject {
         }
 
         retryWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8, execute: workItem)
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
+    }
+
+    private func hotkeyErrorMessage(for status: OSStatus) -> String {
+        if status == OSStatus(eventHotKeyExistsErr) {
+            return "该快捷键已被其他应用占用，请更换组合键。"
+        }
+        if status == OSStatus(eventInternalErr) {
+            return "系统暂时无法注册快捷键，正在重试。"
+        }
+        return "无法注册快捷键（错误码 \(status)）。"
     }
 
     private func carbonModifierFlags(from stored: UInt32) -> UInt32 {

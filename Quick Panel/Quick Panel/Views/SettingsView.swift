@@ -1161,6 +1161,13 @@ struct AdvancedTab: View {
                         .padding(.leading, 36)
                         .transition(.opacity.combined(with: .move(edge: .top)))
                     }
+
+                    if let registrationErrorMessage = hotkeyManager.registrationErrorMessage {
+                        Text(registrationErrorMessage)
+                            .font(.system(size: 12))
+                            .foregroundColor(.orange)
+                            .padding(.leading, 36)
+                    }
                 }
 
                 Divider()

@@ -26,6 +26,7 @@ struct AddItemView: View {
     @State private var browserPath: String?
     @State private var customIcon: NSImage?
     @State private var isFetchingIcon = false
+    @State private var websiteMetadataFetchWorkItem: DispatchWorkItem?
     @State private var lastAutoFilledWebsiteName: String?
     @State private var bindToCurrentApp = false
     @State private var selectedAppBundleId: String?
@@ -128,6 +129,9 @@ struct AddItemView: View {
         .frame(minWidth: 560, minHeight: 420)
         .onAppear {
             initializeForm()
+        }
+        .onDisappear {
+            websiteMetadataFetchWorkItem?.cancel()
         }
         .onChange(of: layer) { _, newLayer in
             handleLayerChange(newLayer)
@@ -300,6 +304,10 @@ struct AddItemView: View {
         isFetchingIcon = true
         AppLogger.debug("开始抓取网站元数据：\(normalizedPath)。", category: logCategory)
         IconFetcher.shared.fetchWebsiteMetadata(for: normalizedPath) { metadata in
+            guard itemType == .website,
+                  URLNormalizer.normalizedURL(from: path)?.absoluteString == normalizedPath else {
+                return
+            }
             if let title = metadata.title {
                 applyAutoFilledWebsiteName(title, fallbackURL: normalizedURL)
             }
@@ -310,6 +318,10 @@ struct AddItemView: View {
     }
 
     private func handleWebsiteURLChange(_ newValue: String) {
+        websiteMetadataFetchWorkItem?.cancel()
+        websiteMetadataFetchWorkItem = nil
+        isFetchingIcon = false
+
         guard let url = URLNormalizer.normalizedURL(from: newValue) else {
             if name == lastAutoFilledWebsiteName {
                 name = ""
@@ -332,18 +344,23 @@ struct AddItemView: View {
         let shouldAutoFill = currentName.isEmpty || currentName == lastAutoFilledWebsiteName
         guard shouldAutoFill else { return }
 
-        IconFetcher.shared.fetchWebsiteMetadata(for: url.absoluteString) { metadata in
-            guard itemType == .website else { return }
-            guard URLNormalizer.normalizedURL(from: path)?.absoluteString == url.absoluteString else { return }
+        let requestedURL = url.absoluteString
+        let workItem = DispatchWorkItem {
+            IconFetcher.shared.fetchWebsiteMetadata(for: requestedURL) { metadata in
+                guard itemType == .website,
+                      URLNormalizer.normalizedURL(from: path)?.absoluteString == requestedURL else { return }
 
-            if let title = metadata.title {
-                applyAutoFilledWebsiteName(title, fallbackURL: url)
-            }
+                if let title = metadata.title {
+                    applyAutoFilledWebsiteName(title, fallbackURL: url)
+                }
 
-            if customIcon == nil, let icon = metadata.icon {
-                customIcon = icon
+                if customIcon == nil, let icon = metadata.icon {
+                    customIcon = icon
+                }
             }
         }
+        websiteMetadataFetchWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45, execute: workItem)
     }
 
     private func applyAutoFilledWebsiteName(_ proposedName: String, fallbackURL: URL) {
@@ -436,6 +453,7 @@ struct EditItemView: View {
     @State private var browserPath: String?
     @State private var customIcon: NSImage?
     @State private var isFetchingIcon = false
+    @State private var websiteMetadataFetchWorkItem: DispatchWorkItem?
     @State private var lastAutoFilledWebsiteName: String?
     @State private var selectedAppBundleId: String?
     @State private var selectedAppName: String?
@@ -533,6 +551,9 @@ struct EditItemView: View {
         .frame(minWidth: 560, minHeight: 380)
         .onAppear {
             initializeForm()
+        }
+        .onDisappear {
+            websiteMetadataFetchWorkItem?.cancel()
         }
         .onChange(of: layer) { _, newLayer in
             if newLayer == .upper {
@@ -665,6 +686,10 @@ struct EditItemView: View {
         isFetchingIcon = true
         AppLogger.debug("开始抓取编辑网站元数据：\(normalizedPath)。", category: logCategory)
         IconFetcher.shared.fetchWebsiteMetadata(for: normalizedPath) { metadata in
+            guard item.type == .website,
+                  URLNormalizer.normalizedURL(from: path)?.absoluteString == normalizedPath else {
+                return
+            }
             if let title = metadata.title {
                 applyAutoFilledWebsiteName(title, fallbackURL: normalizedURL)
             }
@@ -675,6 +700,10 @@ struct EditItemView: View {
     }
 
     private func handleWebsiteURLChange(_ newValue: String) {
+        websiteMetadataFetchWorkItem?.cancel()
+        websiteMetadataFetchWorkItem = nil
+        isFetchingIcon = false
+
         guard let url = URLNormalizer.normalizedURL(from: newValue) else {
             if name == lastAutoFilledWebsiteName {
                 name = ""
@@ -697,18 +726,23 @@ struct EditItemView: View {
         let shouldAutoFill = currentName.isEmpty || currentName == lastAutoFilledWebsiteName
         guard shouldAutoFill else { return }
 
-        IconFetcher.shared.fetchWebsiteMetadata(for: url.absoluteString) { metadata in
-            guard item.type == .website else { return }
-            guard URLNormalizer.normalizedURL(from: path)?.absoluteString == url.absoluteString else { return }
+        let requestedURL = url.absoluteString
+        let workItem = DispatchWorkItem {
+            IconFetcher.shared.fetchWebsiteMetadata(for: requestedURL) { metadata in
+                guard item.type == .website,
+                      URLNormalizer.normalizedURL(from: path)?.absoluteString == requestedURL else { return }
 
-            if let title = metadata.title {
-                applyAutoFilledWebsiteName(title, fallbackURL: url)
-            }
+                if let title = metadata.title {
+                    applyAutoFilledWebsiteName(title, fallbackURL: url)
+                }
 
-            if customIcon == nil, let icon = metadata.icon {
-                customIcon = icon
+                if customIcon == nil, let icon = metadata.icon {
+                    customIcon = icon
+                }
             }
         }
+        websiteMetadataFetchWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45, execute: workItem)
     }
 
     private func applyAutoFilledWebsiteName(_ proposedName: String, fallbackURL: URL) {
