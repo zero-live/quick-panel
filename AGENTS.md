@@ -18,7 +18,13 @@ xcodebuild -project "Quick Panel/Quick Panel.xcodeproj" -scheme "Quick Panel" cl
 log stream --predicate 'process == "Quick Panel"' --level debug
 ```
 
-**No tests exist.** No test target is configured. No package managers (SPM, CocoaPods, Carthage) are in use — zero external dependencies.
+Run unit tests with:
+
+```bash
+xcodebuild -project "Quick Panel/Quick Panel.xcodeproj" -scheme "Quick Panel" -configuration Debug test
+```
+
+`Quick PanelTests` currently covers layout and panel-document serialization. No package managers (SPM, CocoaPods, Carthage) are in use — zero external dependencies.
 
 ## Project Layout
 
@@ -80,7 +86,8 @@ class MyService {
 
 ### Data Persistence
 - JSON files in `~/Library/Application Support/Quick Panel/`
-- Files: `config.json` (items), `settings.json` (app settings), `groups.json` (page groups)
+- Files: `panel.json` (items, groups and page counts), `settings.json` (app settings), `Icons/` (custom icons)
+- Legacy `config.json`, `groups.json`, and `pagecounts.json` are migrated to `panel.json` on first launch and retained for manual recovery.
 - Encoder uses `.prettyPrinted` and `.sortedKeys`
 
 ## Code Style

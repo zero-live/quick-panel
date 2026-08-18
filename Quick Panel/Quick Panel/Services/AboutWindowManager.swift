@@ -12,6 +12,7 @@ class AboutWindowManager {
     static let shared = AboutWindowManager()
 
     private var aboutWindow: NSWindow?
+    private var windowCloseObserver: NSObjectProtocol?
 
     private init() {}
 
@@ -36,13 +37,14 @@ class AboutWindowManager {
         window.contentViewController = hostingController
         window.isReleasedWhenClosed = false
 
-        // Handle window close
-        NotificationCenter.default.addObserver(
+        removeWindowCloseObserver()
+        windowCloseObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.willCloseNotification,
             object: window,
             queue: .main
         ) { [weak self] _ in
             self?.aboutWindow = nil
+            self?.removeWindowCloseObserver()
         }
 
         aboutWindow = window
@@ -61,5 +63,12 @@ class AboutWindowManager {
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
 
+    }
+
+    private func removeWindowCloseObserver() {
+        if let observer = windowCloseObserver {
+            NotificationCenter.default.removeObserver(observer)
+            windowCloseObserver = nil
+        }
     }
 }

@@ -1323,12 +1323,11 @@ struct LayerGridView: View {
                     }
 
                     Button(action: {
-                        let newPage = dataManager.addPage(layer: layer, appBundleIdentifier: pageScopeAppBundleId)
-                        dataManager.setPageGroup(
+                        let nextPage = pageCount
+                        let newPage = dataManager.addPage(
                             layer: layer,
-                            page: newPage,
-                            name: "面板#\(newPage + 1)",
-                            appBundleIdentifier: pageScopeAppBundleId
+                            appBundleIdentifier: pageScopeAppBundleId,
+                            groupName: "面板#\(nextPage + 1)"
                         )
                         goToPage(newPage)
                     }) {

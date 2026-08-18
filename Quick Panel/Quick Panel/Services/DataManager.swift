@@ -8,11 +8,6 @@
 import Foundation
 import Combine
 
-struct GridPosition: Hashable, Codable {
-    var page: Int
-    var slot: Int
-}
-
 class DataManager: ObservableObject {
     static let shared = DataManager()
 
@@ -21,48 +16,89 @@ class DataManager: ObservableObject {
     @Published var pageCounts: [String: Int] = [:]
 
     private let configDirectory: URL
-    private let configFile: URL
-    private let groupsFile: URL
-    private let pageCountsFile: URL
+    private let documentFile: URL
+    private let legacyItemsFile: URL
+    private let legacyGroupsFile: URL
+    private let legacyPageCountsFile: URL
+    private var documentSchemaVersion = PanelDocument.currentSchemaVersion
     private let unboundLowerScope = "__unbound__"
     private let logCategory: AppLogCategory = .data
 
     private init() {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         configDirectory = appSupport.appendingPathComponent("Quick Panel")
-        configFile = configDirectory.appendingPathComponent("config.json")
-        groupsFile = configDirectory.appendingPathComponent("groups.json")
-        pageCountsFile = configDirectory.appendingPathComponent("pagecounts.json")
+        documentFile = configDirectory.appendingPathComponent("panel.json")
+        legacyItemsFile = configDirectory.appendingPathComponent("config.json")
+        legacyGroupsFile = configDirectory.appendingPathComponent("groups.json")
+        legacyPageCountsFile = configDirectory.appendingPathComponent("pagecounts.json")
 
         try? FileManager.default.createDirectory(at: configDirectory, withIntermediateDirectories: true)
 
-        loadItems()
-        loadPageGroups()
-        loadPageCounts()
+        loadPanelDocument()
         AppLogger.info("数据管理器初始化完成，当前项目数=\(items.count)。", category: logCategory)
     }
 
     // MARK: - Load/Save
 
-    func loadItems() {
-        if var loadedItems: [PanelItem] = loadValue(from: configFile, label: "项目配置") {
-            let migratedLegacyIcons = loadedItems.indices.reduce(into: false) { didMigrate, index in
-                didMigrate = IconStorage.shared.migrateLegacyIcon(for: &loadedItems[index]) || didMigrate
-            }
+    private func loadPanelDocument() {
+        let fileManager = FileManager.default
+        let hasDocument = fileManager.fileExists(atPath: documentFile.path)
+        var document: PanelDocument
+        var migratedFromLegacy = false
 
-            items = loadedItems
-            normalizePositions(save: false)
-            if migratedLegacyIcons {
-                saveItems()
+        if hasDocument {
+            document = loadValue(from: documentFile, label: "面板配置") ?? PanelDocument()
+        } else {
+            let legacyItems: [PanelItem] = loadValue(from: legacyItemsFile, label: "旧项目配置") ?? []
+            let legacyGroups: PageGroup = loadValue(from: legacyGroupsFile, label: "旧分页分组") ?? PageGroup()
+            let legacyPageCounts: [String: Int] = loadValue(from: legacyPageCountsFile, label: "旧分页数量") ?? [:]
+            migratedFromLegacy = fileManager.fileExists(atPath: legacyItemsFile.path)
+                || fileManager.fileExists(atPath: legacyGroupsFile.path)
+                || fileManager.fileExists(atPath: legacyPageCountsFile.path)
+            document = PanelDocument(
+                items: legacyItems,
+                pageGroups: legacyGroups,
+                pageCounts: legacyPageCounts
+            )
+        }
+
+        if document.schemaVersion > PanelDocument.currentSchemaVersion {
+            AppLogger.notice("检测到较新版本的面板配置，当前版本将尽量保持兼容读取。", category: logCategory)
+        }
+        documentSchemaVersion = max(PanelDocument.currentSchemaVersion, document.schemaVersion)
+
+        let migratedLegacyIcons = document.items.indices.reduce(into: false) { didMigrate, index in
+            didMigrate = IconStorage.shared.migrateLegacyIcon(for: &document.items[index]) || didMigrate
+        }
+
+        items = document.items
+        pageGroups = document.pageGroups
+        pageCounts = document.pageCounts
+        let normalizedPositions = normalizePositions(save: false)
+
+        if migratedFromLegacy || migratedLegacyIcons || normalizedPositions {
+            saveDocument()
+            if migratedFromLegacy {
+                AppLogger.notice("已迁移旧版项目、分组和页数配置到 panel.json。", category: logCategory)
             }
         }
     }
 
-    func saveItems() {
-        guard saveValue(items, to: configFile, label: "项目配置") else { return }
-        IconStorage.shared.removeUnreferencedIcons(
-            referencedBy: Set(items.compactMap(\.iconFileName))
+    private func saveDocument() {
+        let document = PanelDocument(
+            schemaVersion: documentSchemaVersion,
+            items: items,
+            pageGroups: pageGroups,
+            pageCounts: pageCounts
         )
+        guard saveValue(document, to: documentFile, label: "面板配置") else { return }
+        IconStorage.shared.removeUnreferencedIcons(
+            referencedBy: referencedIconFileNamesIncludingBackup()
+        )
+    }
+
+    func saveItems() {
+        saveDocument()
     }
 
     private func loadValue<Value: Decodable>(from fileURL: URL, label: String) -> Value? {
@@ -159,10 +195,20 @@ class DataManager: ObservableObject {
     }
 
     func deleteItem(_ item: PanelItem) {
-        items.removeAll { $0.id == item.id }
+        deleteItems(ids: [item.id])
+    }
+
+    func deleteItems(ids: Set<UUID>) {
+        guard !ids.isEmpty else { return }
+
+        let originalCount = items.count
+        items.removeAll { ids.contains($0.id) }
+        let deletedCount = originalCount - items.count
+        guard deletedCount > 0 else { return }
+
         normalizePositions(save: false)
         saveItems()
-        AppLogger.notice("已删除项目：\(item.name)。", category: logCategory)
+        AppLogger.notice("已删除项目，数量=\(deletedCount)。", category: logCategory)
     }
 
     func moveItem(id: UUID, layer: PanelLayer, appBundleIdentifier: String? = nil, toPage: Int, slotIndex: Int, itemsPerPage: Int) {
@@ -294,6 +340,14 @@ class DataManager: ObservableObject {
         AppLogger.notice("已清空所有项目。", category: logCategory)
     }
 
+    /// Reflows all scopes after a grid-size change so no item remains outside
+    /// the visible slot range of its page.
+    func reflowItemsForCurrentGrid() {
+        guard normalizePositions(save: false) else { return }
+        saveItems()
+        AppLogger.notice("已根据当前网格重新排列项目。", category: logCategory)
+    }
+
     func legacyUnboundLowerItems() -> [PanelItem] {
         items
             .filter { item in
@@ -338,16 +392,6 @@ class DataManager: ObservableObject {
 
     // MARK: - Page Groups
 
-    func loadPageGroups() {
-        if let loadedGroups: PageGroup = loadValue(from: groupsFile, label: "分页分组") {
-            pageGroups = loadedGroups
-        }
-    }
-
-    func savePageGroups() {
-        saveValue(pageGroups, to: groupsFile, label: "分页分组")
-    }
-
     func getPageGroupName(layer: PanelLayer, page: Int, appBundleIdentifier: String? = nil) -> String? {
         return pageGroups.getGroupName(scopeKey: pageScopeKey(layer: layer, appBundleIdentifier: appBundleIdentifier), page: page)
     }
@@ -358,20 +402,10 @@ class DataManager: ObservableObject {
             page: page,
             name: name
         )
-        savePageGroups()
+        saveDocument()
     }
 
     // MARK: - Page Counts
-
-    func loadPageCounts() {
-        if let loadedPageCounts: [String: Int] = loadValue(from: pageCountsFile, label: "分页数量") {
-            pageCounts = loadedPageCounts
-        }
-    }
-
-    func savePageCounts() {
-        saveValue(pageCounts, to: pageCountsFile, label: "分页数量")
-    }
 
     func getPageCount(for layer: PanelLayer, appBundleIdentifier: String? = nil) -> Int {
         let scopeKey = pageScopeKey(layer: layer, appBundleIdentifier: appBundleIdentifier)
@@ -380,11 +414,16 @@ class DataManager: ObservableObject {
         return max(1, manualCount, maxItemPage + 1)
     }
 
-    func addPage(layer: PanelLayer, appBundleIdentifier: String? = nil) -> Int {
+    func addPage(
+        layer: PanelLayer,
+        appBundleIdentifier: String? = nil,
+        groupName: String? = nil
+    ) -> Int {
         let scopeKey = pageScopeKey(layer: layer, appBundleIdentifier: appBundleIdentifier)
         let current = getPageCount(for: layer, appBundleIdentifier: appBundleIdentifier)
         pageCounts[scopeKey] = current + 1
-        savePageCounts()
+        pageGroups.setGroupName(scopeKey: scopeKey, page: current, name: groupName)
+        saveDocument()
         return current
     }
 
@@ -409,9 +448,7 @@ class DataManager: ObservableObject {
         pageCounts[scopeKey] = max(1, current - 1)
 
         normalizePositions(save: false)
-        saveItems()
-        savePageGroups()
-        savePageCounts()
+        saveDocument()
         AppLogger.notice("已删除页面：layer=\(layer.rawValue)，page=\(page)。", category: logCategory)
     }
 
@@ -444,43 +481,36 @@ class DataManager: ObservableObject {
         return lhs.id.uuidString < rhs.id.uuidString
     }
 
-    private func normalizePositions(save: Bool) {
+    @discardableResult
+    private func normalizePositions(save: Bool) -> Bool {
         let settings = SettingsManager.shared.settings
-        var didChange = false
-        let groupedIndices = Dictionary(grouping: items.indices, by: { pageScopeKey(layer: items[$0].layer, appBundleIdentifier: items[$0].appBundleIdentifier) })
-
-        for indices in groupedIndices.values {
-            let sortedIndices = indices.sorted { lhs, rhs in
-                sortByPosition(items[lhs], items[rhs])
-            }
-            let layer = sortedIndices.first.map { items[$0].layer } ?? .upper
-            let itemsPerPage = max(1, settings.itemsPerPage(for: layer))
-            var usedPositions = Set<GridPosition>()
-
-            for index in sortedIndices {
-                var position = GridPosition(
-                    page: max(0, items[index].page),
-                    slot: min(max(0, items[index].slot), itemsPerPage - 1)
-                )
-
-                while usedPositions.contains(position) {
-                    let nextLinearIndex = position.page * itemsPerPage + position.slot + 1
-                    position = GridPosition(page: nextLinearIndex / itemsPerPage, slot: nextLinearIndex % itemsPerPage)
-                }
-
-                usedPositions.insert(position)
-
-                if items[index].page != position.page || items[index].slot != position.slot {
-                    items[index].page = position.page
-                    items[index].slot = position.slot
-                    didChange = true
-                }
-            }
+        let normalizedItems = PanelLayoutEngine.normalized(items) { layer in
+            settings.itemsPerPage(for: layer)
         }
+        let didChange = zip(items, normalizedItems).contains { current, normalized in
+            current.page != normalized.page || current.slot != normalized.slot
+        }
+
+        guard didChange else { return false }
+        items = normalizedItems
 
         if didChange && save {
             saveItems()
         }
+        return true
+    }
+
+    private func referencedIconFileNamesIncludingBackup() -> Set<String> {
+        var fileNames = Set(items.compactMap(\.iconFileName))
+        let backupURL = documentFile.appendingPathExtension("backup")
+
+        guard let backupData = try? Data(contentsOf: backupURL),
+              let backupDocument = try? JSONDecoder().decode(PanelDocument.self, from: backupData) else {
+            return fileNames
+        }
+
+        fileNames.formUnion(backupDocument.items.compactMap(\.iconFileName))
+        return fileNames
     }
 
     private func shiftItemsForwardForInsertion(to targetPosition: GridPosition, occupiedIndices: [GridPosition: Int], itemsPerPage: Int, in updatedItems: inout [PanelItem]) {

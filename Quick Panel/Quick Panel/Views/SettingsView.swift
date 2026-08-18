@@ -48,6 +48,7 @@ struct SettingsView: View {
 
 struct GridSettingsTab: View {
     @ObservedObject var settingsManager = SettingsManager.shared
+    @ObservedObject var dataManager = DataManager.shared
     @State private var tempUpperColumns: Int = 4
     @State private var tempUpperRows: Int = 3
     @State private var tempLowerColumns: Int = 4
@@ -248,6 +249,7 @@ struct GridSettingsTab: View {
             settings.lowerGridRows = tempLowerRows
             settings.itemSpacing = tempSpacing
         }
+        dataManager.reflowItemsForCurrentGrid()
     }
 }
 
@@ -876,10 +878,7 @@ struct ItemManagementTab: View {
     }
 
     private func deleteSelectedItems() {
-        let selectedItems = dataManager.items.filter { selectedItemIDs.contains($0.id) }
-        for item in selectedItems {
-            dataManager.deleteItem(item)
-        }
+        dataManager.deleteItems(ids: selectedItemIDs)
         selectedItemIDs.removeAll()
         isSelectionMode = false
     }
@@ -1585,10 +1584,15 @@ class KeyCaptureView: NSView {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        setupMonitor()
+        if window != nil {
+            setupMonitor()
+        } else {
+            removeMonitor()
+        }
     }
 
     private func setupMonitor() {
+        guard localMonitor == nil else { return }
         localMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self = self, self.isRecordingActive else { return event }
 
@@ -1605,8 +1609,13 @@ class KeyCaptureView: NSView {
     }
 
     deinit {
+        removeMonitor()
+    }
+
+    private func removeMonitor() {
         if let monitor = localMonitor {
             NSEvent.removeMonitor(monitor)
+            localMonitor = nil
         }
     }
 }

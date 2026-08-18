@@ -196,6 +196,8 @@ class SettingsManager: ObservableObject {
     private let settingsFile: URL
     private var isSuppressingSettingsDidChange = false
     private var isLoadingSettings = false
+    private var pendingLowerPageMemory: [String: Int]?
+    private var lowerPageMemorySaveWorkItem: DispatchWorkItem?
 
     private init() {
         // Setup config directory
@@ -301,10 +303,32 @@ class SettingsManager: ObservableObject {
         newSettings.lowerPageMemory = memory
         newSettings.validate()
 
-        guard newSettings != settings else { return }
+        guard newSettings.lowerPageMemory != settings.lowerPageMemory,
+              newSettings.lowerPageMemory != pendingLowerPageMemory else {
+            return
+        }
+
+        pendingLowerPageMemory = newSettings.lowerPageMemory
+        lowerPageMemorySaveWorkItem?.cancel()
+
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.flushPendingLowerPageMemory()
+        }
+        lowerPageMemorySaveWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: workItem)
+    }
+
+    func flushPendingLowerPageMemory() {
+        lowerPageMemorySaveWorkItem?.cancel()
+        lowerPageMemorySaveWorkItem = nil
+
+        guard let pendingLowerPageMemory else { return }
+        self.pendingLowerPageMemory = nil
+
+        guard pendingLowerPageMemory != settings.lowerPageMemory else { return }
 
         isSuppressingSettingsDidChange = true
-        settings = newSettings
+        settings.lowerPageMemory = pendingLowerPageMemory
         isSuppressingSettingsDidChange = false
     }
 

@@ -5,10 +5,19 @@
 
 CONFIG_DIR="$HOME/Library/Application Support/Quick Panel"
 FILES_TO_CLEAR=(
+    "$CONFIG_DIR/panel.json"
+    "$CONFIG_DIR/panel.json.backup"
     "$CONFIG_DIR/config.json"
+    "$CONFIG_DIR/config.json.backup"
     "$CONFIG_DIR/settings.json"
+    "$CONFIG_DIR/settings.json.backup"
     "$CONFIG_DIR/groups.json"
+    "$CONFIG_DIR/groups.json.backup"
     "$CONFIG_DIR/pagecounts.json"
+    "$CONFIG_DIR/pagecounts.json.backup"
+)
+DIRECTORIES_TO_CLEAR=(
+    "$CONFIG_DIR/Icons"
 )
 
 echo "🗑️  Quick Panel Configuration Cleaner"
@@ -22,10 +31,20 @@ for file in "${FILES_TO_CLEAR[@]}"; do
     fi
 done
 
-if [ ${#existing_files[@]} -gt 0 ]; then
+existing_directories=()
+for directory in "${DIRECTORIES_TO_CLEAR[@]}"; do
+    if [ -d "$directory" ]; then
+        existing_directories+=("$directory")
+    fi
+done
+
+if [ ${#existing_files[@]} -gt 0 ] || [ ${#existing_directories[@]} -gt 0 ]; then
     echo "📁 Found configuration files:"
     for file in "${existing_files[@]}"; do
         echo "   - $file"
+    done
+    for directory in "${existing_directories[@]}"; do
+        echo "   - $directory"
     done
     echo ""
     read -p "Are you sure you want to delete all saved data and reset the app? (y/N) " -n 1 -r
@@ -33,10 +52,13 @@ if [ ${#existing_files[@]} -gt 0 ]; then
 
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         for file in "${existing_files[@]}"; do
-            rm "$file"
+            rm -f -- "$file"
+        done
+        for directory in "${existing_directories[@]}"; do
+            rm -rf -- "$directory"
         done
         echo "✅ Configuration cleared successfully!"
-        echo "💡 Items, settings, page groups, and page counts will be recreated with defaults on next launch."
+        echo "💡 Items, icons, settings, page groups, and page counts will be recreated with defaults on next launch."
     else
         echo "❌ Operation cancelled."
     fi

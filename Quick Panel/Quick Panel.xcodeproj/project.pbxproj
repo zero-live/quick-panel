@@ -6,14 +6,35 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		A4C8C1092F001F9E002F92CA /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A4C8C1072F001F9E002F92CA /* XCTest.framework */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		A44400953034B3C6009CCCED /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A4C8BFFD2F001F9E002F92CA /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A4C8C0042F001F9E002F92CA;
+			remoteInfo = "Quick Panel";
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		A4C8C0052F001F9E002F92CA /* Quick Panel.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Quick Panel.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		A4C8C1052F001F9E002F92CA /* Quick PanelTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Quick PanelTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		A4C8C1072F001F9E002F92CA /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = System/Library/Frameworks/XCTest.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		A4C8C0072F001F9E002F92CA /* Quick Panel */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = "Quick Panel";
+			sourceTree = "<group>";
+		};
+		A4C8C1082F001F9E002F92CA /* Quick PanelTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "Quick PanelTests";
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -26,14 +47,32 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A4C8C1022F001F9E002F92CA /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A4C8C1092F001F9E002F92CA /* XCTest.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		A44400463034B3C6009CCCED /* Recovered References */ = {
+			isa = PBXGroup;
+			children = (
+				A4C8C1072F001F9E002F92CA /* XCTest.framework */,
+			);
+			name = "Recovered References";
+			sourceTree = "<group>";
+		};
 		A4C8BFFC2F001F9E002F92CA = {
 			isa = PBXGroup;
 			children = (
 				A4C8C0072F001F9E002F92CA /* Quick Panel */,
+				A4C8C1082F001F9E002F92CA /* Quick PanelTests */,
 				A4C8C0062F001F9E002F92CA /* Products */,
+				A44400463034B3C6009CCCED /* Recovered References */,
 			);
 			sourceTree = "<group>";
 		};
@@ -41,6 +80,7 @@
 			isa = PBXGroup;
 			children = (
 				A4C8C0052F001F9E002F92CA /* Quick Panel.app */,
+				A4C8C1052F001F9E002F92CA /* Quick PanelTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -70,6 +110,29 @@
 			productReference = A4C8C0052F001F9E002F92CA /* Quick Panel.app */;
 			productType = "com.apple.product-type.application";
 		};
+		A4C8C1042F001F9E002F92CA /* Quick PanelTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A4C8C1102F001F9E002F92CA /* Build configuration list for PBXNativeTarget "Quick PanelTests" */;
+			buildPhases = (
+				A4C8C1012F001F9E002F92CA /* Sources */,
+				A4C8C1022F001F9E002F92CA /* Frameworks */,
+				A4C8C1032F001F9E002F92CA /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A4C8C10B2F001F9E002F92CA /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				A4C8C1082F001F9E002F92CA /* Quick PanelTests */,
+			);
+			name = "Quick PanelTests";
+			packageProductDependencies = (
+			);
+			productName = "Quick PanelTests";
+			productReference = A4C8C1052F001F9E002F92CA /* Quick PanelTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -82,6 +145,10 @@
 				TargetAttributes = {
 					A4C8C0042F001F9E002F92CA = {
 						CreatedOnToolsVersion = 26.2;
+					};
+					A4C8C1042F001F9E002F92CA = {
+						CreatedOnToolsVersion = 26.2;
+						TestTargetID = A4C8C0042F001F9E002F92CA;
 					};
 				};
 			};
@@ -100,12 +167,20 @@
 			projectRoot = "";
 			targets = (
 				A4C8C0042F001F9E002F92CA /* Quick Panel */,
+				A4C8C1042F001F9E002F92CA /* Quick PanelTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		A4C8C0032F001F9E002F92CA /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A4C8C1032F001F9E002F92CA /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -122,7 +197,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A4C8C1012F001F9E002F92CA /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A4C8C10B2F001F9E002F92CA /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A4C8C0042F001F9E002F92CA /* Quick Panel */;
+			targetProxy = A44400953034B3C6009CCCED /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		A4C8C00E2F001F9F002F92CA /* Debug */ = {
@@ -305,6 +395,46 @@
 			};
 			name = Release;
 		};
+		A4C8C1112F001F9E002F92CA /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.2;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.benxin.Quick-PanelTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Quick Panel.app/Contents/MacOS/Quick Panel";
+			};
+			name = Debug;
+		};
+		A4C8C1122F001F9E002F92CA /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.2;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.benxin.Quick-PanelTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Quick Panel.app/Contents/MacOS/Quick Panel";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -322,6 +452,15 @@
 			buildConfigurations = (
 				A4C8C0112F001F9F002F92CA /* Debug */,
 				A4C8C0122F001F9F002F92CA /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A4C8C1102F001F9E002F92CA /* Build configuration list for PBXNativeTarget "Quick PanelTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A4C8C1112F001F9E002F92CA /* Debug */,
+				A4C8C1122F001F9E002F92CA /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

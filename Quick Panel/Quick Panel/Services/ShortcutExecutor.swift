@@ -116,7 +116,7 @@ class ShortcutExecutor {
         appleScript?.executeAndReturnError(&error)
 
         if let error = error {
-        } else {
+            AppLogger.error("AppleScript 执行失败：\(error)", category: .app)
         }
     }
 

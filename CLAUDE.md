@@ -105,7 +105,8 @@ Current behavior:
 ### Data and Settings
 
 - `DataManager`
-  - persists `config.json`, `groups.json`, `pagecounts.json`
+  - persists versioned `panel.json` containing items, groups, and page counts
+  - migrates legacy `config.json`, `groups.json`, and `pagecounts.json` on first launch
   - owns `items`, `pageGroups`, and `pageCounts`
 - `SettingsManager`
   - persists `settings.json`
@@ -181,10 +182,9 @@ All app data lives under:
 
 Current files:
 
-- `config.json`
+- `panel.json`
 - `settings.json`
-- `groups.json`
-- `pagecounts.json`
+- `Icons/`
 
 ## Notification Names in Use
 

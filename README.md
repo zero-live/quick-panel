@@ -167,10 +167,11 @@ log stream --predicate 'process == "Quick Panel"' --level debug
 
 当前使用的文件有：
 
-- `config.json`：项目列表
+- `panel.json`：项目、页面分组和页数（当前格式，带 `schemaVersion`）
 - `settings.json`：应用设置
-- `groups.json`：页面分组名称
-- `pagecounts.json`：每层页数
+- `Icons/`：自定义图标文件
+
+旧版的 `config.json`、`groups.json` 和 `pagecounts.json` 会在首次启动时自动迁移到 `panel.json`，原文件会保留。
 
 JSON 输出格式使用：
 - `prettyPrinted`
@@ -266,14 +267,16 @@ Quick Panel/
 
 当前会删除以下文件并恢复默认状态：
 
+- `panel.json` 及其备份
 - `config.json`
 - `settings.json`
 - `groups.json`
 - `pagecounts.json`
+- `Icons/`
 
 ## 已知事实
 
-- 当前没有自动化测试
+- 已提供 `Quick PanelTests` 单元测试 target
 - 当前没有 Release 打包脚本
 - 当前没有导入/导出配置功能
 - 当前没有搜索栏

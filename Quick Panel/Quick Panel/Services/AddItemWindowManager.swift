@@ -13,6 +13,8 @@ class AddItemWindowManager {
 
     private var addWindow: NSWindow?
     private var editWindow: NSWindow?
+    private var addWindowCloseObserver: NSObjectProtocol?
+    private var editWindowCloseObserver: NSObjectProtocol?
 
     private init() {}
 
@@ -47,13 +49,14 @@ class AddItemWindowManager {
         window.level = .modalPanel  // Higher level to stay on top
         window.isReleasedWhenClosed = false
 
-        // Setup window close notification
-        NotificationCenter.default.addObserver(
+        removeAddWindowCloseObserver()
+        addWindowCloseObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.willCloseNotification,
             object: window,
             queue: .main
         ) { [weak self] _ in
             self?.addWindow = nil
+            self?.removeAddWindowCloseObserver()
         }
 
         addWindow = window
@@ -64,6 +67,7 @@ class AddItemWindowManager {
     func closeAddItemWindow() {
         addWindow?.close()
         addWindow = nil
+        removeAddWindowCloseObserver()
     }
 
     func showEditItemWindow(item: PanelItem) {
@@ -86,13 +90,14 @@ class AddItemWindowManager {
         window.level = .modalPanel  // Higher level to stay on top
         window.isReleasedWhenClosed = false
 
-        // Setup window close notification
-        NotificationCenter.default.addObserver(
+        removeEditWindowCloseObserver()
+        editWindowCloseObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.willCloseNotification,
             object: window,
             queue: .main
         ) { [weak self] _ in
             self?.editWindow = nil
+            self?.removeEditWindowCloseObserver()
         }
 
         editWindow = window
@@ -103,6 +108,7 @@ class AddItemWindowManager {
     func closeEditItemWindow() {
         editWindow?.close()
         editWindow = nil
+        removeEditWindowCloseObserver()
     }
 
     private func resolvedBindingContext(layer: PanelLayer, appBundleId: String?, appName: String?) -> (bundleIdentifier: String?, appName: String?) {
@@ -116,5 +122,19 @@ class AddItemWindowManager {
 
         let currentApp = ContextDetector.shared.frontmostAppInfo
         return (appBundleId ?? currentApp?.bundleIdentifier, appName ?? currentApp?.appName)
+    }
+
+    private func removeAddWindowCloseObserver() {
+        if let observer = addWindowCloseObserver {
+            NotificationCenter.default.removeObserver(observer)
+            addWindowCloseObserver = nil
+        }
+    }
+
+    private func removeEditWindowCloseObserver() {
+        if let observer = editWindowCloseObserver {
+            NotificationCenter.default.removeObserver(observer)
+            editWindowCloseObserver = nil
+        }
     }
 }

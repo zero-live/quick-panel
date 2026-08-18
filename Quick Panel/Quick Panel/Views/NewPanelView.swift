@@ -135,6 +135,7 @@ struct LayerView: View {
     let onAddItem: () -> Void
 
     @State private var localPage = 0
+    @State private var scrollWheelMonitor: Any?
 
     var totalPages: Int {
         max(1, Int(ceil(Double(items.count) / Double(itemsPerPage))))
@@ -173,10 +174,16 @@ struct LayerView: View {
         }
         .padding(.vertical, 12)
         .onAppear {
-            // Add scroll wheel monitoring for pagination
-            NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
+            guard scrollWheelMonitor == nil else { return }
+            scrollWheelMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
                 handleScrollWheel(event)
                 return event
+            }
+        }
+        .onDisappear {
+            if let scrollWheelMonitor {
+                NSEvent.removeMonitor(scrollWheelMonitor)
+                self.scrollWheelMonitor = nil
             }
         }
     }

@@ -12,6 +12,7 @@ class ChangelogWindowManager {
     static let shared = ChangelogWindowManager()
 
     private var changelogWindow: NSWindow?
+    private var windowCloseObserver: NSObjectProtocol?
 
     private init() {}
 
@@ -37,17 +38,26 @@ class ChangelogWindowManager {
         window.isReleasedWhenClosed = false
         window.minSize = NSSize(width: 700, height: 480)
 
-        NotificationCenter.default.addObserver(
+        removeWindowCloseObserver()
+        windowCloseObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.willCloseNotification,
             object: window,
             queue: .main
         ) { [weak self] _ in
             self?.changelogWindow = nil
+            self?.removeWindowCloseObserver()
         }
 
         changelogWindow = window
         window.center()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func removeWindowCloseObserver() {
+        if let observer = windowCloseObserver {
+            NotificationCenter.default.removeObserver(observer)
+            windowCloseObserver = nil
+        }
     }
 }

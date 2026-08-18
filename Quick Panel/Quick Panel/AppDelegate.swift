@@ -96,6 +96,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        SettingsManager.shared.flushPendingLowerPageMemory()
         mouseEventMonitor?.stop()
         hotkeyManager?.stop()
     }

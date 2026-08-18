@@ -12,6 +12,7 @@ class SettingsWindowManager {
     static let shared = SettingsWindowManager()
 
     private var settingsWindow: NSWindow?
+    private var windowCloseObserver: NSObjectProtocol?
     private let logCategory: AppLogCategory = .app
 
     private init() {}
@@ -40,13 +41,14 @@ class SettingsWindowManager {
         window.setFrameAutosaveName("Settings")
         window.isReleasedWhenClosed = false
 
-        // Handle window close
-        NotificationCenter.default.addObserver(
+        removeWindowCloseObserver()
+        windowCloseObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.willCloseNotification,
             object: window,
             queue: .main
         ) { [weak self] _ in
             self?.settingsWindow = nil
+            self?.removeWindowCloseObserver()
             AppLogger.debug("设置窗口已关闭。", category: self?.logCategory ?? .app)
         }
 
@@ -71,6 +73,14 @@ class SettingsWindowManager {
     func closeSettings() {
         settingsWindow?.close()
         settingsWindow = nil
+        removeWindowCloseObserver()
         AppLogger.debug("主动关闭设置窗口。", category: logCategory)
+    }
+
+    private func removeWindowCloseObserver() {
+        if let observer = windowCloseObserver {
+            NotificationCenter.default.removeObserver(observer)
+            windowCloseObserver = nil
+        }
     }
 }
