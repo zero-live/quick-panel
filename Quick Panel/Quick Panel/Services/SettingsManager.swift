@@ -55,6 +55,22 @@ enum PanelMaterialStyle: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+enum PanelSizingMode: String, Codable, CaseIterable, Identifiable {
+    case automatic
+    case fixed
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .automatic:
+            return "自动适配（推荐）"
+        case .fixed:
+            return "固定大小"
+        }
+    }
+}
+
 // MARK: - AppSettings Model
 
 struct AppSettings: Codable, Equatable {
@@ -72,6 +88,7 @@ struct AppSettings: Codable, Equatable {
     var cellHeight: CGFloat = 90    // 60-120
     var panelOpacity: Double = 1.0  // 0.2-1.0, applied to the glass background only
     var panelMaterialStyle: PanelMaterialStyle = .liquidGlass
+    var panelSizingMode: PanelSizingMode = .automatic
     var launchAtLogin: Bool = false
     var hotkeyEnabled: Bool = false
     var hotkeyKeyCode: UInt32 = 49       // Default: Space (keyCode 49)
@@ -142,7 +159,7 @@ struct AppSettings: Codable, Equatable {
     // keys from their defaults instead of rejecting the complete file.
     private enum CodingKeys: String, CodingKey {
         case upperGridColumns, upperGridRows, lowerGridColumns, lowerGridRows
-        case itemSpacing, cellWidth, cellHeight, panelOpacity, panelMaterialStyle
+        case itemSpacing, cellWidth, cellHeight, panelOpacity, panelMaterialStyle, panelSizingMode
         case launchAtLogin, hotkeyEnabled, hotkeyKeyCode, hotkeyModifiers
         case autoCheckForUpdates, skippedUpdateVersion, lastUpdateCheckAt, lowerPageMemory
     }
@@ -160,6 +177,7 @@ struct AppSettings: Codable, Equatable {
         cellHeight = try container.decodeIfPresent(CGFloat.self, forKey: .cellHeight) ?? cellHeight
         panelOpacity = try container.decodeIfPresent(Double.self, forKey: .panelOpacity) ?? panelOpacity
         panelMaterialStyle = try container.decodeIfPresent(PanelMaterialStyle.self, forKey: .panelMaterialStyle) ?? panelMaterialStyle
+        panelSizingMode = try container.decodeIfPresent(PanelSizingMode.self, forKey: .panelSizingMode) ?? panelSizingMode
         launchAtLogin = try container.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? launchAtLogin
         hotkeyEnabled = try container.decodeIfPresent(Bool.self, forKey: .hotkeyEnabled) ?? hotkeyEnabled
         hotkeyKeyCode = try container.decodeIfPresent(UInt32.self, forKey: .hotkeyKeyCode) ?? hotkeyKeyCode

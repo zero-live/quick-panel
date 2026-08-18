@@ -260,10 +260,12 @@ struct AppearanceTab: View {
     @ObservedObject var settingsManager = SettingsManager.shared
     @State private var tempOpacity: Double = 1.0
     @State private var tempMaterialStyle: PanelMaterialStyle = .sidebar
+    @State private var tempSizingMode: PanelSizingMode = .automatic
 
     var hasChanges: Bool {
         tempOpacity != settingsManager.settings.panelOpacity ||
-        tempMaterialStyle != settingsManager.settings.panelMaterialStyle
+        tempMaterialStyle != settingsManager.settings.panelMaterialStyle ||
+        tempSizingMode != settingsManager.settings.panelSizingMode
     }
 
     private var previewColorScheme: ColorScheme {
@@ -301,6 +303,33 @@ struct AppearanceTab: View {
                         .labelsHidden()
                         .pickerStyle(.menu)
                         .frame(width: 200)
+                        .padding(.leading, 32)
+                    }
+
+                    Divider()
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Image(systemName: "arrow.up.left.and.arrow.down.right")
+                                .foregroundColor(.blue)
+                                .frame(width: 24)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("面板尺寸")
+                                    .font(.system(size: 13, weight: .medium))
+                                Text("自动适配会在较小屏幕上缩小面板，不改变网格和分页")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                        }
+
+                        Picker("", selection: $tempSizingMode) {
+                            ForEach(PanelSizingMode.allCases) { mode in
+                                Text(mode.displayName).tag(mode)
+                            }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.segmented)
                         .padding(.leading, 32)
                     }
 
@@ -416,12 +445,14 @@ struct AppearanceTab: View {
     private func loadCurrentSettings() {
         tempOpacity = settingsManager.settings.panelOpacity
         tempMaterialStyle = settingsManager.settings.panelMaterialStyle
+        tempSizingMode = settingsManager.settings.panelSizingMode
     }
 
     private func applyChanges() {
         settingsManager.batchUpdate { settings in
             settings.panelOpacity = tempOpacity
             settings.panelMaterialStyle = tempMaterialStyle
+            settings.panelSizingMode = tempSizingMode
         }
     }
 }

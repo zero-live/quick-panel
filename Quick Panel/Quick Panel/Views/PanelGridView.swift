@@ -21,6 +21,7 @@ struct DesktopGridView: NSViewRepresentable {
     let rows: Int
     let cellSize: CGSize
     let spacing: CGFloat
+    let visualScale: CGFloat
 
     private var contentSize: CGSize {
         CGSize(
@@ -66,7 +67,8 @@ struct DesktopGridView: NSViewRepresentable {
             columns: columns,
             rows: rows,
             cellSize: cellSize,
-            spacing: spacing
+            spacing: spacing,
+            visualScale: visualScale
         )
         return collectionView
     }
@@ -90,7 +92,8 @@ struct DesktopGridView: NSViewRepresentable {
             columns: columns,
             rows: rows,
             cellSize: cellSize,
-            spacing: spacing
+            spacing: spacing,
+            visualScale: visualScale
         )
         collectionView.reloadData()
     }
@@ -109,6 +112,7 @@ struct DesktopGridView: NSViewRepresentable {
         private var rows: Int = 0
         private var cellSize: CGSize = .zero
         private var spacing: CGFloat = 0
+        private var visualScale: CGFloat = 1
         private var mouseDownIndex: Int?
         private var mouseDownPoint: CGPoint = .zero
         private var draggingItem: PanelGridSlot?
@@ -120,11 +124,11 @@ struct DesktopGridView: NSViewRepresentable {
         private var edgeSwitchLock: PanelDragEdgeDirection?
         private var lastVisualMoveTime: TimeInterval = 0
 
-        private let edgeSwitchInset: CGFloat = 46
-        private let edgeSwitchReleaseInset: CGFloat = 92
+        private var edgeSwitchInset: CGFloat { 46 * visualScale }
+        private var edgeSwitchReleaseInset: CGFloat { 92 * visualScale }
         private let pageSwitchDelay: TimeInterval = 0.42
         private let minimumVisualMoveInterval: TimeInterval = 1.0 / 120.0
-        private let minimumDragDistance: CGFloat = 8
+        private var minimumDragDistance: CGFloat { 8 * visualScale }
 
         func configure(
             itemsBySlot: [Int: PanelItem],
@@ -137,7 +141,8 @@ struct DesktopGridView: NSViewRepresentable {
             columns: Int,
             rows: Int,
             cellSize: CGSize,
-            spacing: CGFloat
+            spacing: CGFloat,
+            visualScale: CGFloat
         ) {
             self.layer = layer
             self.pageScopeAppBundleId = pageScopeAppBundleId
@@ -149,6 +154,7 @@ struct DesktopGridView: NSViewRepresentable {
             self.rows = rows
             self.cellSize = cellSize
             self.spacing = spacing
+            self.visualScale = visualScale
 
             self.slots = (0..<(columns * rows)).map { slot in
                 PanelGridSlot(slot: slot, item: itemsBySlot[slot])
@@ -177,7 +183,8 @@ struct DesktopGridView: NSViewRepresentable {
                 currentAppName: currentAppName,
                 pageScopeAppBundleId: pageScopeAppBundleId,
                 page: page,
-                cellSize: cellSize
+                cellSize: cellSize,
+                visualScale: visualScale
             )
             return itemView
         }
@@ -659,9 +666,10 @@ final class PanelCollectionItem: NSCollectionViewItem {
         currentAppName: String?,
         pageScopeAppBundleId: String?,
         page: Int,
-        cellSize: CGSize
+        cellSize: CGSize,
+        visualScale: CGFloat
     ) {
-        let cellView = PanelCollectionCellView(item: item, cellSize: cellSize)
+        let cellView = PanelCollectionCellView(item: item, cellSize: cellSize, visualScale: visualScale)
 
         if let hostingController {
             hostingController.rootView = cellView
@@ -684,6 +692,7 @@ final class PanelCollectionItem: NSCollectionViewItem {
 struct PanelCollectionCellView: View {
     let item: PanelItem?
     let cellSize: CGSize
+    let visualScale: CGFloat
     @ObservedObject private var gridDragVisualState = PanelGridDragVisualState.shared
     @State private var isHovered = false
 
@@ -694,10 +703,10 @@ struct PanelCollectionCellView: View {
     var body: some View {
         Group {
             if let item {
-                ItemContentView(item: item, isHovered: isHovered)
+                ItemContentView(item: item, isHovered: isHovered, scale: visualScale)
             } else {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 10)
+                    RoundedRectangle(cornerRadius: 10 * visualScale)
                         .fill(shouldShowHover ? Color.primary.opacity(0.05) : Color.clear)
 
                     RoundedRectangle(cornerRadius: 10)
@@ -706,14 +715,14 @@ struct PanelCollectionCellView: View {
                             style: StrokeStyle(lineWidth: 1, dash: [3, 3])
                         )
 
-                    VStack(spacing: 6) {
+                    VStack(spacing: 6 * visualScale) {
                         Image(systemName: "plus")
-                            .font(.system(size: shouldShowHover ? 20 : 16, weight: .medium))
+                            .font(.system(size: (shouldShowHover ? 20 : 16) * visualScale, weight: .medium))
                             .foregroundColor(.secondary.opacity(shouldShowHover ? 0.6 : 0.5))
 
                         if shouldShowHover {
                             Text("添加")
-                                .font(.system(size: 10))
+                                .font(.system(size: 10 * visualScale))
                                 .foregroundColor(.secondary.opacity(0.7))
                         }
                     }

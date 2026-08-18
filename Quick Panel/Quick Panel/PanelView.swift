@@ -183,6 +183,7 @@ struct PanelView: View {
     @ObservedObject var dataManager = DataManager.shared
     @ObservedObject var settingsManager = SettingsManager.shared
     @ObservedObject var contextDetector = ContextDetector.shared
+    @ObservedObject private var layoutManager = PanelLayoutManager.shared
     @State private var upperPage = 0
     @State private var lowerPagesByApp: [String: Int] = SettingsManager.shared.settings.lowerPageMemory
 
@@ -259,8 +260,8 @@ struct PanelView: View {
     var body: some View {
         VStack(spacing: 0) {
             // Drag handle at the top
-            DragHandleView()
-                .frame(height: 24)
+            DragHandleView(scale: layoutManager.metrics.scale)
+                .frame(height: layoutManager.metrics.dragHandleHeight)
 
             // Upper grid - common items
             LayerGridView(
@@ -278,9 +279,9 @@ struct PanelView: View {
             // Divider
             Divider()
                 .background(Color.secondary.opacity(0.2))
-                .frame(height: 1.5)
-                .padding(.horizontal, 20)
-                .padding(.vertical, 6)
+                .frame(height: layoutManager.metrics.dividerThickness)
+                .padding(.horizontal, layoutManager.metrics.horizontalPadding)
+                .padding(.vertical, layoutManager.metrics.dividerVerticalPadding)
 
             // Lower grid - current app items
             LayerGridView(
@@ -308,7 +309,7 @@ struct PanelView: View {
             PanelVibrantSurface(
                 style: settingsManager.settings.panelMaterialStyle,
                 opacity: settingsManager.settings.panelOpacity,
-                cornerRadius: 18
+                cornerRadius: 18 * layoutManager.metrics.scale
             )
         )
         .onAppear {
@@ -381,6 +382,7 @@ struct LayerGridView: View {
 
     @ObservedObject private var dataManager = DataManager.shared
     @ObservedObject private var settingsManager = SettingsManager.shared
+    @ObservedObject private var layoutManager = PanelLayoutManager.shared
     @State private var showingGroupNameEditor = false
     @State private var editingGroupName = ""
     @State private var pageMovedForward = true
@@ -389,7 +391,7 @@ struct LayerGridView: View {
     @State private var showingDeletePageConfirm = false
 
     private var layerHeight: CGFloat {
-        SettingsManager.shared.settings.layerHeight(for: layer)
+        layoutManager.metrics.layerHeight(for: layer, settings: settingsManager.settings)
     }
 
     private var layerDragContext: PanelLayerDragContext {
@@ -405,11 +407,11 @@ struct LayerGridView: View {
     }
 
     private var cellSize: CGSize {
-        CGSize(width: settingsManager.settings.cellWidth, height: settingsManager.settings.cellHeight)
+        layoutManager.metrics.cellSize
     }
 
     private var gridSpacing: CGFloat {
-        settingsManager.settings.itemSpacing
+        layoutManager.metrics.itemSpacing
     }
 
     private var gridContentSize: CGSize {
@@ -475,19 +477,20 @@ struct LayerGridView: View {
     }
 
     var body: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: 4 * layoutManager.metrics.scale) {
             // Title with page info
             HStack {
                 LayerContextBadgeView(
                     layer: layer,
                     title: title,
-                    currentAppName: currentAppName
+                    currentAppName: currentAppName,
+                    scale: layoutManager.metrics.scale
                 )
-                .frame(width: 112, alignment: .leading)
+                .frame(width: 112 * layoutManager.metrics.scale, alignment: .leading)
 
                 Spacer()
 
-                HStack(spacing: 6) {
+                HStack(spacing: 6 * layoutManager.metrics.scale) {
                     if page > 0 {
                         Button(action: {
                             if currentPageItems.isEmpty {
@@ -497,9 +500,9 @@ struct LayerGridView: View {
                             }
                         }) {
                             Image(systemName: "minus")
-                                .font(.system(size: 9, weight: .bold))
+                                .font(.system(size: 9 * layoutManager.metrics.scale, weight: .bold))
                                 .foregroundColor(.secondary.opacity(isDeletePageHovered ? 0.8 : 0.5))
-                                .frame(width: 14, height: 14)
+                                .frame(width: 14 * layoutManager.metrics.scale, height: 14 * layoutManager.metrics.scale)
                                 .background(Circle().fill(Color.secondary.opacity(isDeletePageHovered ? 0.25 : 0.15)))
                                 .scaleEffect(isDeletePageHovered ? 1.1 : 1.0)
                         }
@@ -526,7 +529,7 @@ struct LayerGridView: View {
 
                     if pageCount > 1 {
                         Text("\(page + 1)/\(pageCount)")
-                            .font(.system(size: 10))
+                            .font(.system(size: 10 * layoutManager.metrics.scale))
                             .foregroundColor(.secondary.opacity(0.6))
                     }
 
@@ -540,9 +543,9 @@ struct LayerGridView: View {
                         goToPage(newPage)
                     }) {
                         Image(systemName: "plus")
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.system(size: 9 * layoutManager.metrics.scale, weight: .bold))
                             .foregroundColor(.secondary.opacity(isAddPageHovered ? 0.8 : 0.5))
-                            .frame(width: 14, height: 14)
+                            .frame(width: 14 * layoutManager.metrics.scale, height: 14 * layoutManager.metrics.scale)
                             .background(Circle().fill(Color.secondary.opacity(isAddPageHovered ? 0.25 : 0.15)))
                             .scaleEffect(isAddPageHovered ? 1.1 : 1.0)
                     }
@@ -554,14 +557,14 @@ struct LayerGridView: View {
                         }
                     }
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 5)
+                .padding(.horizontal, 8 * layoutManager.metrics.scale)
+                .padding(.vertical, 5 * layoutManager.metrics.scale)
                 .background(Color.primary.opacity(0.04))
                 .clipShape(Capsule())
-                .frame(width: 112, alignment: .trailing)
+                .frame(width: 112 * layoutManager.metrics.scale, alignment: .trailing)
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 4)
+            .padding(.horizontal, layoutManager.metrics.horizontalPadding)
+            .padding(.top, 4 * layoutManager.metrics.scale)
             .onReceive(NotificationCenter.default.publisher(for: .scrollPreviousPage)) { notification in
                 guard let userInfo = notification.userInfo,
                       let layerString = userInfo["layer"] as? String,
@@ -587,7 +590,8 @@ struct LayerGridView: View {
             .overlay(alignment: .center) {
                 GroupNameHeaderView(
                     groupName: currentGroupName,
-                    onEdit: beginEditingGroupName
+                    onEdit: beginEditingGroupName,
+                    scale: layoutManager.metrics.scale
                 )
                 .popover(isPresented: $showingGroupNameEditor) {
                     GroupNameEditorView(
@@ -615,12 +619,13 @@ struct LayerGridView: View {
                 columns: gridColumns,
                 rows: gridRows,
                 cellSize: cellSize,
-                spacing: gridSpacing
+                spacing: gridSpacing,
+                visualScale: layoutManager.metrics.scale
             )
             .id(page)
             .frame(width: gridContentSize.width, height: gridContentSize.height)
-            .padding(.horizontal, 20)
-            .padding(.bottom, 6)
+            .padding(.horizontal, layoutManager.metrics.horizontalPadding)
+            .padding(.bottom, 6 * layoutManager.metrics.scale)
             .transition(.asymmetric(
                 insertion: .move(edge: pageMovedForward ? .trailing : .leading).combined(with: .opacity),
                 removal: .move(edge: pageMovedForward ? .leading : .trailing).combined(with: .opacity)
@@ -628,30 +633,32 @@ struct LayerGridView: View {
             .animation(.spring(response: 0.3, dampingFraction: 0.7), value: page)
 
             if let emptyMessage, currentPageItems.isEmpty {
-                EmptyStateHintView(message: emptyMessage)
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 2)
+                EmptyStateHintView(message: emptyMessage, scale: layoutManager.metrics.scale)
+                    .padding(.horizontal, layoutManager.metrics.horizontalPadding)
+                    .padding(.bottom, 2 * layoutManager.metrics.scale)
             }
 
             if pageCount > 1 {
-                HStack(spacing: 8) {
+                HStack(spacing: 8 * layoutManager.metrics.scale) {
                     PageChevronButton(
                         systemName: "chevron.up",
                         isEnabled: page > 0,
-                        helpText: "上一页（也可将鼠标悬停在此层区域滚动滚轮）"
+                        helpText: "上一页（也可将鼠标悬停在此层区域滚动滚轮）",
+                        scale: layoutManager.metrics.scale
                     ) {
                         if page > 0 {
                             goToPage(page - 1)
                         }
                     }
 
-                    HStack(spacing: 6) {
+                    HStack(spacing: 6 * layoutManager.metrics.scale) {
                         ForEach(0..<pageCount, id: \.self) { index in
                             PageIndicatorDot(
                                 index: index,
-                                currentPage: $page
+                                currentPage: $page,
+                                scale: layoutManager.metrics.scale
                             )
-                            .frame(width: 14, height: 14)
+                            .frame(width: 14 * layoutManager.metrics.scale, height: 14 * layoutManager.metrics.scale)
                                 .onTapGesture {
                                     goToPage(index)
                                 }
@@ -661,14 +668,15 @@ struct LayerGridView: View {
                     PageChevronButton(
                         systemName: "chevron.down",
                         isEnabled: page < pageCount - 1,
-                        helpText: "下一页（也可将鼠标悬停在此层区域滚动滚轮）"
+                        helpText: "下一页（也可将鼠标悬停在此层区域滚动滚轮）",
+                        scale: layoutManager.metrics.scale
                     ) {
                         if page < pageCount - 1 {
                             goToPage(page + 1)
                         }
                     }
                 }
-                .padding(.bottom, 2)
+                .padding(.bottom, 2 * layoutManager.metrics.scale)
             }
         }
         .frame(height: layerHeight, alignment: .top)
@@ -677,7 +685,8 @@ struct LayerGridView: View {
             LayerEdgePageSwitchHint(
                 context: layerDragContext,
                 currentPage: page,
-                pageCount: pageCount
+                pageCount: pageCount,
+                scale: layoutManager.metrics.scale
             )
             .allowsHitTesting(false)
         }
@@ -727,6 +736,7 @@ struct LayerEdgePageSwitchHint: View {
     let context: PanelLayerDragContext
     let currentPage: Int
     let pageCount: Int
+    let scale: CGFloat
     @ObservedObject private var gridDragVisualState = PanelGridDragVisualState.shared
 
     private var hint: PanelDragEdgeHint? {
@@ -753,7 +763,8 @@ struct LayerEdgePageSwitchHint: View {
             EdgePageSwitchBar(
                 direction: .previous,
                 isActive: hint?.direction == .previous,
-                isVisible: shouldShowPassiveHints && canSwitchPrevious
+                isVisible: shouldShowPassiveHints && canSwitchPrevious,
+                scale: scale
             )
 
             Spacer()
@@ -761,11 +772,12 @@ struct LayerEdgePageSwitchHint: View {
             EdgePageSwitchBar(
                 direction: .next,
                 isActive: hint?.direction == .next,
-                isVisible: shouldShowPassiveHints && canSwitchNext
+                isVisible: shouldShowPassiveHints && canSwitchNext,
+                scale: scale
             )
         }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 28)
+        .padding(.horizontal, 6 * scale)
+        .padding(.vertical, 28 * scale)
         .animation(.spring(response: 0.22, dampingFraction: 0.75), value: hint)
         .animation(.easeInOut(duration: 0.16), value: shouldShowPassiveHints)
     }
@@ -775,27 +787,28 @@ struct EdgePageSwitchBar: View {
     let direction: PanelDragEdgeDirection
     let isActive: Bool
     let isVisible: Bool
+    let scale: CGFloat
 
     private var iconName: String {
         direction == .previous ? "chevron.left" : "chevron.right"
     }
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 8 * scale) {
             Image(systemName: iconName)
-                .font(.system(size: 12, weight: .bold))
+                .font(.system(size: 12 * scale, weight: .bold))
                 .foregroundColor(.white.opacity(isActive ? 0.98 : 0.72))
 
             RoundedRectangle(cornerRadius: 999)
                 .fill(Color.white.opacity(isActive ? 0.86 : 0.42))
-                .frame(width: 3, height: isActive ? 72 : 46)
+                .frame(width: 3 * scale, height: (isActive ? 72 : 46) * scale)
         }
-        .frame(width: isActive ? 24 : 18)
+        .frame(width: (isActive ? 24 : 18) * scale)
         .frame(maxHeight: .infinity)
         .background(
             Capsule()
                 .fill(Color.accentColor.opacity(isActive ? 0.72 : 0.26))
-                .shadow(color: Color.accentColor.opacity(isActive ? 0.32 : 0.12), radius: isActive ? 12 : 5, x: 0, y: 0)
+                .shadow(color: Color.accentColor.opacity(isActive ? 0.32 : 0.12), radius: (isActive ? 12 : 5) * scale, x: 0, y: 0)
         )
         .scaleEffect(isActive ? 1.05 : 1.0)
         .opacity(isVisible ? 1.0 : 0.0)
@@ -806,17 +819,18 @@ struct EdgePageSwitchBar: View {
 
 // MARK: - Drag Handle
 struct DragHandleView: View {
+    let scale: CGFloat
     @State private var isHovered = false
 
     var body: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: 4 * scale) {
             Spacer()
             // Three dots indicator
-            HStack(spacing: 4) {
+            HStack(spacing: 4 * scale) {
                 ForEach(0..<3) { _ in
                     Circle()
                         .fill(Color.secondary.opacity(isHovered ? 0.7 : 0.6))
-                        .frame(width: 5, height: 5)
+                        .frame(width: 5 * scale, height: 5 * scale)
                 }
             }
             Spacer()
@@ -832,6 +846,7 @@ struct DragHandleView: View {
 struct GroupNameHeaderView: View {
     let groupName: String?
     let onEdit: () -> Void
+    let scale: CGFloat
     @State private var isHovered = false
 
     private var hasGroupName: Bool {
@@ -839,35 +854,35 @@ struct GroupNameHeaderView: View {
     }
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 6 * scale) {
             if let groupName, !groupName.isEmpty {
                 Text(groupName)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 11 * scale, weight: .semibold))
                     .foregroundColor(.blue.opacity(0.85))
                     .lineLimit(1)
                     .truncationMode(.tail)
             } else {
                 Text("命名分组")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.system(size: 11 * scale, weight: .medium))
                     .foregroundColor(.secondary)
             }
 
             Button(action: onEdit) {
                 Image(systemName: hasGroupName ? "pencil" : "plus.circle")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 11 * scale, weight: .semibold))
                     .foregroundColor(hasGroupName ? .blue.opacity(0.8) : .secondary)
             }
             .buttonStyle(.plain)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
+        .padding(.horizontal, 8 * scale)
+        .padding(.vertical, 4 * scale)
         .background(Color.primary.opacity(isHovered ? 0.08 : 0.04))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.secondary.opacity(0.2), lineWidth: 0.5)
+            RoundedRectangle(cornerRadius: 8 * scale)
+                .stroke(Color.secondary.opacity(0.2), lineWidth: max(0.5, 0.5 * scale))
         )
-        .cornerRadius(8)
-        .frame(maxWidth: 180)
+        .cornerRadius(8 * scale)
+        .frame(maxWidth: 180 * scale)
         .help(hasGroupName ? "编辑分组名称" : "为当前页命名")
         .contentShape(Rectangle())
         .onHover { hovering in
@@ -888,6 +903,7 @@ struct LayerContextBadgeView: View {
     let layer: PanelLayer
     let title: String
     let currentAppName: String?
+    let scale: CGFloat
 
     private var badgeTitle: String {
         if layer == .lower {
@@ -902,7 +918,7 @@ struct LayerContextBadgeView: View {
 
     var body: some View {
         Label(badgeTitle, systemImage: iconName)
-            .font(.system(size: 11, weight: .medium))
+            .font(.system(size: 11 * scale, weight: .medium))
             .foregroundColor(.secondary)
             .lineLimit(1)
             .truncationMode(.tail)
@@ -911,23 +927,24 @@ struct LayerContextBadgeView: View {
 
 struct EmptyStateHintView: View {
     let message: String
+    let scale: CGFloat
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 6 * scale) {
             Image(systemName: "info.circle")
-                .font(.system(size: 11, weight: .medium))
+                .font(.system(size: 11 * scale, weight: .medium))
                 .foregroundColor(.secondary.opacity(0.8))
 
             Text(message)
-                .font(.system(size: 11))
+                .font(.system(size: 11 * scale))
                 .foregroundColor(.secondary)
                 .lineLimit(2)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 10 * scale)
+        .padding(.vertical, 6 * scale)
         .background(Color.primary.opacity(0.035))
-        .cornerRadius(10)
+        .cornerRadius(10 * scale)
     }
 }
 
@@ -935,26 +952,27 @@ struct EmptyStateHintView: View {
 struct ItemContentView: View {
     let item: PanelItem
     let isHovered: Bool
+    let scale: CGFloat
 
     var body: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 6 * scale) {
             if let icon = item.getIcon() {
                 Image(nsImage: icon)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
-                    .frame(width: 48, height: 48)
+                    .frame(width: 48 * scale, height: 48 * scale)
                     .background(
-                        RoundedRectangle(cornerRadius: 10)
+                        RoundedRectangle(cornerRadius: 10 * scale)
                             .fill(isHovered ? Color.primary.opacity(0.1) : Color.clear)
                     )
             }
 
             Text(item.name)
-                .font(.system(size: 11))
+                .font(.system(size: 11 * scale))
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .foregroundColor(.primary)
-                .frame(maxWidth: 70)
+                .frame(maxWidth: 70 * scale)
                 .help(item.name)
         }
     }
@@ -965,15 +983,16 @@ struct PageChevronButton: View {
     let systemName: String
     let isEnabled: Bool
     let helpText: String
+    let scale: CGFloat
     let action: () -> Void
 
     @State private var isHovered = false
 
     var body: some View {
         Image(systemName: systemName)
-            .font(.system(size: 8, weight: .bold))
+            .font(.system(size: 8 * scale, weight: .bold))
             .foregroundColor(.secondary.opacity(isEnabled ? (isHovered ? 0.85 : 0.55) : 0.15))
-            .frame(width: 16, height: 16)
+            .frame(width: 16 * scale, height: 16 * scale)
             .background(
                 Circle().fill(Color.secondary.opacity(isEnabled && isHovered ? 0.15 : 0))
             )
@@ -1001,6 +1020,7 @@ struct PageChevronButton: View {
 struct PageIndicatorDot: View {
     let index: Int
     @Binding var currentPage: Int
+    let scale: CGFloat
     @State private var isHovered = false
 
     private var isCurrent: Bool {
@@ -1011,8 +1031,8 @@ struct PageIndicatorDot: View {
         Circle()
             .fill(isCurrent ? Color.accentColor : Color.secondary.opacity(isHovered ? 0.75 : 0.5))
             .frame(
-                width: isCurrent ? 9 : (isHovered ? 8 : 7),
-                height: isCurrent ? 9 : (isHovered ? 8 : 7)
+                width: (isCurrent ? 9 : (isHovered ? 8 : 7)) * scale,
+                height: (isCurrent ? 9 : (isHovered ? 8 : 7)) * scale
             )
             .contentShape(Circle())
             .animation(.easeOut(duration: 0.12), value: isHovered)

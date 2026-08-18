@@ -19,6 +19,7 @@ class PanelWindowManager {
     private var clickOutsideMonitor: Any?
     private var localClickOutsideMonitor: Any?
     private var scrollWheelMonitor: Any?
+    private let layoutManager = PanelLayoutManager.shared
 
     private init() {
         setupNotifications()
@@ -42,6 +43,14 @@ class PanelWindowManager {
         ) { [weak self] _ in
             self?.applySettings()
         }
+
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.applyScreenParameters()
+        }
     }
 
     private func setupPanelWindow() {
@@ -57,13 +66,11 @@ class PanelWindowManager {
         let panelView = PanelView()
         let hostingController = NSHostingController(rootView: panelView)
 
-        // Get dynamic window size from settings
-        let settings = SettingsManager.shared.settings
-        let width = settings.panelWidth
-        let height = settings.layerHeight(for: .upper) + settings.layerHeight(for: .lower) + 44  // Two layers + drag handle(24) + divider(20)
+        layoutManager.update(for: NSScreen.main)
+        let panelSize = layoutManager.metrics.panelSize
 
         let window = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: width, height: height),
+            contentRect: NSRect(origin: .zero, size: panelSize),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -80,7 +87,7 @@ class PanelWindowManager {
 
         if let contentView = window.contentView {
             contentView.wantsLayer = true
-            contentView.layer?.cornerRadius = 18
+            contentView.layer?.cornerRadius = 18 * layoutManager.metrics.scale
             contentView.layer?.masksToBounds = true
         }
 
@@ -158,11 +165,12 @@ class PanelWindowManager {
 
             let locationInWindow = event.locationInWindow
             let settings = SettingsManager.shared.settings
-            let lowerLayerHeight = settings.layerHeight(for: .lower)
-            let dragHandleHeight: CGFloat = 24
-            let dividerHeight: CGFloat = 20
+            let metrics = self.layoutManager.metrics
+            let lowerLayerHeight = metrics.layerHeight(for: .lower, settings: settings)
+            let dragHandleHeight = metrics.dragHandleHeight
+            let dividerHeight = metrics.interLayerHeight
             let upperLayerMinY = lowerLayerHeight + dividerHeight
-            let upperLayerMaxY = upperLayerMinY + settings.layerHeight(for: .upper)
+            let upperLayerMaxY = upperLayerMinY + metrics.layerHeight(for: .upper, settings: settings)
             let lowerLayerMaxY = lowerLayerHeight
 
             let targetLayer: PanelLayer?
@@ -235,19 +243,22 @@ class PanelWindowManager {
             return
         }
 
+        let targetScreen = screenContaining(point: location)
+        layoutManager.update(for: targetScreen)
+
 
         // Notify that panel is about to show (before it becomes frontmost)
         NotificationCenter.default.post(name: .panelWillShow, object: nil)
 
         // Calculate window position
-        let windowSize = window.frame.size
+        let windowSize = layoutManager.metrics.panelSize
         var origin = CGPoint(
             x: location.x - windowSize.width / 2,
             y: location.y - windowSize.height / 2
         )
 
         // Adjust position to avoid screen edges
-        if let screen = screenContaining(point: location) {
+        if let screen = targetScreen {
             let screenFrame = screen.visibleFrame
 
             // Keep within screen bounds
@@ -265,7 +276,7 @@ class PanelWindowManager {
             }
         }
 
-        window.setFrameOrigin(origin)
+        window.setFrame(NSRect(origin: origin, size: windowSize), display: true)
         window.orderFrontRegardless()
         // Don't call makeKey() for nonactivatingPanel - it causes warnings and isn't needed
         // window.makeKey()
@@ -286,26 +297,22 @@ class PanelWindowManager {
             return
         }
 
-        let settings = SettingsManager.shared.settings
-
-        // Recalculate window size
-        let width = settings.panelWidth
-        let height = settings.layerHeight(for: .upper) + settings.layerHeight(for: .lower) + 44
-
         let currentFrame = window.frame
         let center = CGPoint(x: currentFrame.midX, y: currentFrame.midY)
-        let newSize = NSSize(width: width, height: height)
+        let screen = screenContaining(point: center)
+        layoutManager.update(for: screen)
+        let newSize = layoutManager.metrics.panelSize
 
         if abs(currentFrame.width - newSize.width) > 0.5 || abs(currentFrame.height - newSize.height) > 0.5 {
             var newOrigin = CGPoint(
-                x: center.x - width / 2,
-                y: center.y - height / 2
+                x: center.x - newSize.width / 2,
+                y: center.y - newSize.height / 2
             )
 
-            if let screen = screenContaining(point: center) {
+            if let screen {
                 let visibleFrame = screen.visibleFrame
-                newOrigin.x = min(max(newOrigin.x, visibleFrame.minX), max(visibleFrame.minX, visibleFrame.maxX - width))
-                newOrigin.y = min(max(newOrigin.y, visibleFrame.minY), max(visibleFrame.minY, visibleFrame.maxY - height))
+                newOrigin.x = min(max(newOrigin.x, visibleFrame.minX), max(visibleFrame.minX, visibleFrame.maxX - newSize.width))
+                newOrigin.y = min(max(newOrigin.y, visibleFrame.minY), max(visibleFrame.minY, visibleFrame.maxY - newSize.height))
             }
 
             window.setFrame(
@@ -318,7 +325,20 @@ class PanelWindowManager {
         // Keep content fully opaque. Panel opacity is applied only to the glass
         // background so icons and labels never fade together with the material.
         window.alphaValue = 1
-        AppLogger.info("主面板设置已应用：\(Int(width))x\(Int(height))，玻璃透明度=\(Int(settings.panelOpacity * 100))%。", category: .panel)
+        window.contentView?.layer?.cornerRadius = 18 * layoutManager.metrics.scale
+        let settings = SettingsManager.shared.settings
+        AppLogger.info("主面板设置已应用：\(Int(newSize.width))x\(Int(newSize.height))，缩放=\(Int(layoutManager.metrics.scale * 100))%，玻璃透明度=\(Int(settings.panelOpacity * 100))%。", category: .panel)
+    }
+
+    private func applyScreenParameters() {
+        guard let window = panelWindow else { return }
+
+        let frame = window.frame
+        let center = CGPoint(x: frame.midX, y: frame.midY)
+        layoutManager.update(for: screenContaining(point: center))
+
+        guard isVisible else { return }
+        applySettings()
     }
 
     private func screenContaining(point: CGPoint) -> NSScreen? {

@@ -83,6 +83,55 @@ final class PanelLayoutEngineTests: XCTestCase {
         XCTAssertTrue(document.pageCounts.isEmpty)
     }
 
+    func testAdaptiveMetricsKeepBaseSizeWhenTheScreenHasEnoughRoom() {
+        let metrics = PanelLayoutMetrics.resolve(
+            settings: .default,
+            maximumPanelSize: CGSize(width: 1_000, height: 1_000)
+        )
+
+        XCTAssertEqual(metrics.scale, 1)
+        XCTAssertEqual(metrics.panelSize.width, 368)
+        XCTAssertEqual(metrics.panelSize.height, 776)
+        XCTAssertEqual(metrics.cellSize, CGSize(width: 70, height: 90))
+    }
+
+    func testAdaptiveMetricsShrinkEveryVisualMetricToFitTheAvailableScreen() {
+        var settings = AppSettings.default
+        settings.upperGridColumns = 5
+        settings.upperGridRows = 5
+        settings.lowerGridColumns = 5
+        settings.lowerGridRows = 5
+        settings.itemSpacing = 24
+        settings.cellWidth = 100
+        settings.cellHeight = 120
+
+        let availableSize = CGSize(width: 900, height: 800)
+        let metrics = PanelLayoutMetrics.resolve(
+            settings: settings,
+            maximumPanelSize: availableSize
+        )
+
+        XCTAssertLessThan(metrics.scale, 1)
+        XCTAssertTrue(metrics.isCompact)
+        XCTAssertLessThanOrEqual(metrics.panelSize.width, availableSize.width)
+        XCTAssertLessThanOrEqual(metrics.panelSize.height, availableSize.height)
+        XCTAssertEqual(metrics.cellSize.width, settings.cellWidth * metrics.scale, accuracy: 0.001)
+        XCTAssertEqual(metrics.itemSpacing, settings.itemSpacing * metrics.scale, accuracy: 0.001)
+    }
+
+    func testFixedSizingModeKeepsTheConfiguredSize() {
+        var settings = AppSettings.default
+        settings.panelSizingMode = .fixed
+
+        let metrics = PanelLayoutMetrics.resolve(
+            settings: settings,
+            maximumPanelSize: CGSize(width: 200, height: 200)
+        )
+
+        XCTAssertEqual(metrics.scale, 1)
+        XCTAssertEqual(metrics.panelSize, CGSize(width: 368, height: 776))
+    }
+
     private func makeItem(
         name: String,
         layer: PanelLayer = .upper,
