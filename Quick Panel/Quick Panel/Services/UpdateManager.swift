@@ -21,8 +21,8 @@ class UpdateManager: ObservableObject {
     @Published var lastCheckedAt: Date? = nil
     @Published var lastErrorMessage: String? = nil
 
-    private let giteeReleasesAPI = "https://gitee.com/api/v5/repos/zerolive/quick-panel/releases/latest"
-    private let releasePageURL = "https://gitee.com/zerolive/quick-panel/releases"
+    private let releasesAPI = "https://api.github.com/repos/zero-live/quick-panel/releases/latest"
+    private let releasePageURL = "https://github.com/zero-live/quick-panel/releases"
     private let expectedAssetNamePrefix = "Quick Panel"
     private let logCategory: AppLogCategory = .app
 
@@ -125,13 +125,15 @@ class UpdateManager: ObservableObject {
         isChecking = true
         lastErrorMessage = nil
 
-        guard let url = URL(string: giteeReleasesAPI) else {
+        guard let url = URL(string: releasesAPI) else {
             isChecking = false
             return
         }
 
         var request = URLRequest(url: url)
         request.timeoutInterval = 10
+        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        request.setValue("Quick-Panel/\(currentVersion)", forHTTPHeaderField: "User-Agent")
 
         URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
             DispatchQueue.main.async {
@@ -240,9 +242,9 @@ class UpdateManager: ObservableObject {
                   (200...299).contains(httpResponse.statusCode),
                   let tempURL = tempURL, error == nil else {
                 DispatchQueue.main.async {
-                    self.lastErrorMessage = "无法下载更新文件，请手动前往 Gitee 下载。"
+                    self.lastErrorMessage = "无法下载更新文件，请手动前往 GitHub Releases 下载。"
                     AppLogger.error("更新包下载失败。", category: self.logCategory)
-                    self.showAlert(title: "下载失败", message: "无法下载更新文件，请手动前往 Gitee 下载。")
+                    self.showAlert(title: "下载失败", message: "无法下载更新文件，请手动前往 GitHub Releases 下载。")
                 }
                 return
             }
@@ -254,7 +256,7 @@ class UpdateManager: ObservableObject {
                 try FileManager.default.moveItem(at: tempURL, to: destURL)
             } catch {
                 DispatchQueue.main.async {
-                    self.lastErrorMessage = "无法保存更新文件，请手动前往 Gitee 下载。"
+                    self.lastErrorMessage = "无法保存更新文件，请手动前往 GitHub Releases 下载。"
                     AppLogger.error("保存更新包失败：\(error.localizedDescription)", category: self.logCategory)
                     self.showAlert(title: "下载失败", message: self.lastErrorMessage ?? "无法保存更新文件。")
                 }

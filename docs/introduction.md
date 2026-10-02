@@ -24,10 +24,10 @@ Quick Panel 想把这些常用入口收拢到鼠标附近。按下鼠标中键�
 
 Quick Panel 使用 SwiftUI 与 AppKit 开发，没有第三方依赖，常驻菜单栏。它适合习惯用鼠标操作、希望给常用入口找到固定位置的 macOS 用户，也可以作为学习 SwiftUI 与 AppKit 混合开发、非激活悬浮面板和全局事件监听的源码案例。
 
-当前代码版本为 1.5.0，最低支持 macOS 26.2。中键监听需要辅助功能权限；没有中键鼠标时，可启用全局快捷键。当前功能集中在应用与网站启动，搜索、配置导入导出和完整自动化工作流尚未提供。
+当前代码版本为 1.5.1，最低支持 macOS 26.2。中键监听需要辅助功能权限；没有中键鼠标时，可启用全局快捷键。当前功能集中在应用与网站启动，搜索、配置导入导出和完整自动化工作流尚未提供。
 
 项目采用 MIT 许可证，欢迎体验、反馈问题和参与改进。
 
 - [源码](https://github.com/zero-live/quick-panel)
-- [安装包入口](https://gitee.com/zerolive/quick-panel/releases)
+- [安装包入口](https://github.com/zero-live/quick-panel/releases)
 - [使用与开发说明](../README.md)

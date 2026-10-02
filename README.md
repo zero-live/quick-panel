@@ -10,7 +10,7 @@ Quick Panel 是一款 macOS 快捷启动面板。按下鼠标中键，在光标�
 
 *上图为功能示意，具体界面以实际运行版本为准。*
 
-[源码仓库](https://github.com/zero-live/quick-panel) · [下载入口（Gitee）](https://gitee.com/zerolive/quick-panel/releases) · [更新记录](CHANGELOG.md) · [参与贡献](CONTRIBUTING.md) · [MIT 许可证](LICENSE)
+[源码仓库](https://github.com/zero-live/quick-panel) · [下载入口](https://github.com/zero-live/quick-panel/releases) · [更新记录](CHANGELOG.md) · [参与贡献](CONTRIBUTING.md) · [MIT 许可证](LICENSE)
 
 ## 为什么做 Quick Panel
 
@@ -33,7 +33,9 @@ Quick Panel 是一款 macOS 快捷启动面板。按下鼠标中键，在光标�
 
 ## 安装与上手
 
-当前代码版本为 **1.5.0（Build 13）**，最低支持 **macOS 26.2**。源码发布在 GitHub，安装包及应用内更新目前由 Gitee 提供。安装包供应情况请查看 [Gitee Releases](https://gitee.com/zerolive/quick-panel/releases)。
+当前代码版本为 **1.5.1（Build 14）**，最低支持 **macOS 26.2**。源码、安装包及应用内更新均由 GitHub 提供。安装包供应情况请查看 [GitHub Releases](https://github.com/zero-live/quick-panel/releases)。
+
+安装包为 Universal，支持 Apple Silicon 与 Intel。当前包使用 ad-hoc 签名，尚未进行 Apple 公证；安装要求和校验方式见 [1.5.1 发布说明](docs/releases/v1.5.1.md)。旧版本的更新地址无法访问，请从 GitHub 手动安装 1.5.1，后续版本会从 GitHub 检查更新。
 
 1. 下载适用的 DMG，将 `Quick Panel.app` 拖入「应用程序」后打开。
 2. 在「系统设置 → 隐私与安全性 → 辅助功能」中授权 Quick Panel，以稳定监听鼠标中键。
@@ -86,7 +88,7 @@ xcodebuild -project "Quick Panel/Quick Panel.xcodeproj" \
 
 旧版 `config.json`、`groups.json` 和 `pagecounts.json` 会迁移到 `panel.json`，原文件保留以便恢复。
 
-添加网站时，应用会请求该网站的页面与图标；更新检查会访问 Gitee Releases API，可在高级设置中关闭自动检查。打开网址会交给浏览器。反馈问题前，请检查导出日志是否包含不希望公开的网址、名称或本地路径。
+添加网站时，应用会请求该网站的页面与图标；更新检查会访问 GitHub Releases API，可在高级设置中关闭自动检查。打开网址会交给浏览器。反馈问题前，请检查导出日志是否包含不希望公开的网址、名称或本地路径。
 
 ## 项目结构
 

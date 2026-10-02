@@ -1,6 +1,6 @@
 # Quick Panel 社媒发布文案
 
-以下正文可直接复制。源码链接使用 GitHub，安装包下载仍由 Gitee Releases 提供。文案以当前代码版本 1.5.0 为准。
+以下正文可直接复制。源码和安装包下载均使用公开的 GitHub 仓库。文案以当前代码版本 1.5.1 为准。
 
 ## 配图
 
@@ -38,7 +38,7 @@
 项目采用 MIT 许可证。如果你也习惯用鼠标操作，欢迎试试，想听听大家会怎么安排自己的面板。
 
 源码：https://github.com/zero-live/quick-panel
-下载：https://gitee.com/zerolive/quick-panel/releases
+下载：https://github.com/zero-live/quick-panel/releases
 
 #Mac工具 #效率工具 #开源项目 #独立开发 #macOS
 
@@ -57,7 +57,7 @@
 需要 macOS 26.2+，中键监听需要辅助功能权限。欢迎体验，也想听听你会放哪些入口。
 
 源码：https://github.com/zero-live/quick-panel
-下载：https://gitee.com/zerolive/quick-panel/releases
+下载：https://github.com/zero-live/quick-panel/releases
 
 配图：竖版宣传图或横版宣传图，选一张。
 
@@ -89,7 +89,7 @@ Supports pagination, drag-to-reorder, custom icons, Liquid Glass, and adaptive s
 
 App-specific links are configured manually. Middle-click monitoring needs Accessibility permission.
 
-Download: https://gitee.com/zerolive/quick-panel/releases
+Download: https://github.com/zero-live/quick-panel/releases
 
 配图：横版宣传图。中英文首条各自独立发布即可，不需要同时放在一条里。
 
@@ -113,12 +113,12 @@ Download: https://gitee.com/zerolive/quick-panel/releases
 
 开发上，项目使用 SwiftUI + AppKit，没有第三方依赖。SwiftUI 负责界面，AppKit 负责非激活悬浮面板和窗口生命周期，全局中键监听优先使用 CGEvent，快捷键使用 Carbon。面板配置以本地 JSON 保存，布局和文档序列化已有单元测试。
 
-当前版本为 1.5.0，最低支持 macOS 26.2。稳定监听中键需要辅助功能权限；没有中键鼠标可以启用全局快捷键。目前功能集中在应用与网站入口，搜索、配置导入导出和完整自动化工作流尚未提供。
+当前版本为 1.5.1，最低支持 macOS 26.2。稳定监听中键需要辅助功能权限；没有中键鼠标可以启用全局快捷键。目前功能集中在应用与网站入口，搜索、配置导入导出和完整自动化工作流尚未提供。
 
 如果你习惯用鼠标操作，或者正在学习 SwiftUI 与 AppKit 混合开发，欢迎看看这个项目。项目采用 MIT 许可证，欢迎反馈问题或参与改进。
 
 源码：https://github.com/zero-live/quick-panel
-安装包：https://gitee.com/zerolive/quick-panel/releases
+安装包：https://github.com/zero-live/quick-panel/releases
 
 ## 附：短演示拍摄脚本
 

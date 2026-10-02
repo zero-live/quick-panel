@@ -15,8 +15,8 @@ The current shipped implementation is not a plain SwiftUI `WindowGroup` app. It 
 
 ## Current Version
 
-- Marketing version: `1.5.0`
-- Build number: `13`
+- Marketing version: `1.5.1`
+- Build number: `14`
 - Bundle identifier: `com.benxin.Quick-Panel`
 - Deployment target: `macOS 26.2`
 - No third-party dependencies
@@ -154,7 +154,7 @@ Current behavior:
 - `StatusBarManager`
   - owns the menu bar icon and menu
 - `UpdateManager`
-  - checks latest release from Gitee
+  - checks latest release from GitHub
   - can download and open a `.dmg`
 
 ## Models

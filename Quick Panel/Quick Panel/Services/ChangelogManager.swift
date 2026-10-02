@@ -28,9 +28,37 @@ class ChangelogManager {
 
     let releases: [ChangelogRelease] = [
         ChangelogRelease(
+            version: "1.5.1",
+            build: "14",
+            status: "当前版本",
+            sections: [
+                ChangelogSection(title: "修复", items: [
+                    "更新检查与安装包下载改用公开的 GitHub Releases，解决私有仓库导致无法访问的问题"
+                ]),
+                ChangelogSection(title: "优化", items: [
+                    "应用图标改为石墨黑与暖白的极简双层面板设计",
+                    "同步开源介绍、下载入口与发布说明"
+                ])
+            ]
+        ),
+        ChangelogRelease(
+            version: "1.5.0",
+            build: "13",
+            status: "已发布",
+            sections: [
+                ChangelogSection(title: "新增", items: [
+                    "面板新增自动适配与固定大小模式，可根据触发所在屏幕调整尺寸"
+                ]),
+                ChangelogSection(title: "优化", items: [
+                    "在小尺寸屏幕上等比缩放图标、间距与控件，保持网格结构和分页不变",
+                    "显示器或外观设置变化后重新计算面板尺寸与位置"
+                ])
+            ]
+        ),
+        ChangelogRelease(
             version: "1.4.0",
             build: "12",
-            status: "当前版本",
+            status: "已发布",
             sections: [
                 ChangelogSection(title: "新增", items: [
                     "新增原生液态玻璃与液态玻璃 · 清透主题，面板效果与 macOS Dock 的系统玻璃材质保持一致",
