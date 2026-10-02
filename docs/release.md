@@ -7,6 +7,8 @@
 - 对外版本号：`1.5.0`
 - 构建号：`13`
 - 当前发布分支：`master`
+- GitHub 源码仓库：`https://github.com/zero-live/quick-panel`
+- `origin` 指向 GitHub；`gitee` 保留原 Gitee 仓库，用于现有安装包和更新服务
 - 当前 Tag 历史：
   - `v1.5.0`
   - `v1.4.0`
@@ -196,6 +198,15 @@ git tag v1.2.1
 git push origin master
 git push origin v1.2.1
 ```
+
+安装包及应用内更新当前仍使用 Gitee。如需同步发布到 Gitee，另行推送对应代码与 Tag，并在 Gitee 创建 Release、上传已验证的 DMG：
+
+```bash
+git push gitee master
+git push gitee v1.2.1
+```
+
+GitHub 上的源码与 Git Tag 不会自动生成安装包或 Release 附件。
 
 ### 8. 生成发布包并发布 Release
 

@@ -151,10 +151,10 @@ Use `// MARK: -` to organize sections within files:
 
 - **Bundle ID**: `com.benxin.Quick-Panel`
 - **Target**: macOS 26.2+
-- **Entitlements**: App Sandbox (on), user-selected files (read-only), network client (for favicon fetching)
+- **Entitlements**: App Sandbox (on), user-selected files (read-write), network client (for favicon fetching and update checks)
 - **Accessibility**: Uses `AXIsProcessTrusted()` / `CGEvent.tapCreate` for global mouse monitoring
 - **Activation policy**: `.accessory` (no dock icon, menu-bar only)
-- **No test target** — manual testing only via `run_app.sh` or Xcode
+- **Tests**: `Quick PanelTests` covers layout, serialization and adaptive sizing. Quit running app instances before tests; input and window behavior also needs manual validation.
 
 ## Common Pitfalls
 
@@ -162,4 +162,4 @@ Use `// MARK: -` to organize sections within files:
 2. **Duplicate Notification.Name**: Extensions on `Notification.Name` are scattered across files. Check for existing names before adding new ones.
 3. **Window management**: The panel uses `NSPanel` with `nonactivatingPanel` — do NOT call `makeKey()` on it (causes warnings).
 4. **Sandbox + Accessibility**: The app requests accessibility permission at runtime; the entitlements file enables sandbox + network.
-5. **PanelWindowManager.shared**: Accessed via `AppDelegate` cast, not a true static singleton. Be careful with initialization order.
+5. **PanelWindowManager.shared**: A `static let` singleton initialized by `AppDelegate`. Be careful with initialization order.

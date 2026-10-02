@@ -2,7 +2,7 @@
 
 set -u
 
-PROJECT_DIR="/Users/benxin/Code/Quick Panel"
+PROJECT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 PROJECT_PATH="Quick Panel/Quick Panel.xcodeproj"
 SCHEME="Quick Panel"
 CONFIGURATION="Debug"
@@ -67,4 +67,5 @@ if [ $? -eq 0 ]; then
     echo "💡 To see logs, run: log stream --predicate 'process == \"Quick Panel\"' --level debug"
 else
     echo "❌ Build failed"
+    exit 1
 fi

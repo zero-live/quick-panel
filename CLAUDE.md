@@ -15,12 +15,12 @@ The current shipped implementation is not a plain SwiftUI `WindowGroup` app. It 
 
 ## Current Version
 
-- Marketing version: `1.4.0`
-- Build number: `12`
+- Marketing version: `1.5.0`
+- Build number: `13`
 - Bundle identifier: `com.benxin.Quick-Panel`
 - Deployment target: `macOS 26.2`
 - No third-party dependencies
-- No test target
+- `Quick PanelTests` covers grid layout, panel-document serialization and adaptive sizing
 
 ## Build Commands
 
@@ -40,6 +40,14 @@ xcodebuild -project "Quick Panel/Quick Panel.xcodeproj" -scheme "Quick Panel" -c
 
 ```bash
 xcodebuild -project "Quick Panel/Quick Panel.xcodeproj" -scheme "Quick Panel" clean
+```
+
+### Tests
+
+Quit any running Quick Panel instance first; the app's single-instance check can otherwise terminate the test host.
+
+```bash
+xcodebuild -project "Quick Panel/Quick Panel.xcodeproj" -scheme "Quick Panel" -configuration Debug test
 ```
 
 ### Logs
@@ -85,8 +93,10 @@ Current behavior:
 - scroll wheel events are routed per layer
 - empty slots open the add-item window
 - items can be edited via context menu
-- items can be reordered by drag-and-drop swapping
+- items can be reordered by drag-and-drop insertion and moved across pages
 - page groups can be named per page
+- native Liquid Glass and system material themes, background-only opacity
+- automatic screen-adaptive sizing or fixed sizing
 
 ### Window Types
 
@@ -112,6 +122,12 @@ Current behavior:
   - persists `settings.json`
   - validates grid, spacing, size, and opacity values
   - posts `.settingsDidChange`
+- `PanelLayoutEngine` / `PanelLayoutMetrics`
+  - normalize page/slot positions and scale panel metrics to the active display
+- `IconStorage`
+  - persists custom icons as separate files and migrates legacy embedded icon data
+- `AppLogger` / `LogExportManager`
+  - system logging, daily local logs, 7-day retention, and 24-hour log export
 
 ### Launch and Integration
 
@@ -162,6 +178,8 @@ Current behavior:
   - item spacing
 - `外观`
   - panel opacity
+  - Liquid Glass and other system material themes
+  - automatic / fixed panel sizing
 - `管理`
   - browse and delete items
   - open add-item window
@@ -171,20 +189,26 @@ Current behavior:
   - reset settings
   - app version/build
   - update check
+  - Accessibility permission state and guidance
+  - automatic update toggle and local log management
 
 ## Persistence Paths
 
-All app data lives under:
+App data uses the system Application Support directory. For sandbox builds:
 
 ```text
-~/Library/Application Support/Quick Panel/
+~/Library/Containers/com.benxin.Quick-Panel/Data/Library/Application Support/Quick Panel/
 ```
+
+Non-sandbox builds use `~/Library/Application Support/Quick Panel/`.
 
 Current files:
 
 - `panel.json`
 - `settings.json`
 - `Icons/`
+- `Logs/`
+- JSON backup files
 
 ## Notification Names in Use
 
@@ -200,12 +224,12 @@ These are defined in multiple files, so check for duplicates before adding more 
 
 ## Important Current Limitations
 
-- No automated tests
+- Window/input/permission behavior still requires manual verification
 - No search feature in the panel
 - No import/export
-- `PermissionManager.requestAccessibilityPermission()` exists but is not currently invoked during startup
+- Startup can invoke Accessibility guidance when permissions are missing and the fallback monitor is in use; automatic guidance uses a cooldown
 - `browserPath` support is only partially surfaced
-- `ContextDetector`, `ShortcutExecutor`, and preset action models are partially integrated or currently unused in the main product flow
+- `ContextDetector` supplies frontmost-app information to the main panel; `ShortcutExecutor` and preset action models are not connected to the current item-launching flow
 
 ## Editing Guidance
 
@@ -216,3 +240,13 @@ When modifying this repo:
 - preserve the singleton service pattern already used across the app
 - keep Chinese user-facing UI copy consistent with the existing app
 - remember that the repo path contains spaces and shell commands must quote paths
+
+## Open-source Materials
+
+- `README.md`: user-facing overview and source setup
+- `CONTRIBUTING.md` / `LICENSE`: contributions and MIT license
+- `docs/introduction.md`: reusable project introduction
+- `docs/social-media.md`: Xiaohongshu, Jike, X and long-form launch copy
+- `docs/assets/`: launch illustrations (schematic, not screenshots)
+- `design/quick-panel-minimal/`: monochrome icon master, prompts and export script
+- `docs/open-source-checklist.md`: remaining release checks
