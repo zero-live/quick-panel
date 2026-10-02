@@ -13,6 +13,10 @@ The current shipped implementation is not a plain SwiftUI `WindowGroup` app. It 
 - dedicated `NSWindow` managers for settings, about, add-item, and edit-item windows
 - singleton service objects for most shared functionality
 
+## Repository Destination
+
+GitHub (`https://github.com/zero-live/quick-panel`) is the primary repository. Default pushes and tags go to `origin`, pull requests and release packages use GitHub, and public download/update links must use GitHub. The secondary historical remote is used only when explicitly requested by the user.
+
 ## Current Version
 
 - Marketing version: `1.5.1`

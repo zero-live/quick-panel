@@ -2,6 +2,13 @@
 
 > macOS quick-launch panel app (Quicker-style). SwiftUI + AppKit hybrid. Triggered by middle-click, shows a floating panel with app/website shortcuts.
 
+## Repository & Release Destination
+
+- GitHub is the primary repository: `https://github.com/zero-live/quick-panel`.
+- Use `origin` for normal commits, pushes, tags and pull requests; the active branch tracks `origin/master`.
+- Publish installation packages and release notes through GitHub Releases. Public links and in-app updates must use GitHub.
+- The existing secondary remote is historical only; push to it only when the user explicitly requests it.
+
 ## Build & Run
 
 ```bash

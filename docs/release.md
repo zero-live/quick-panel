@@ -8,6 +8,8 @@
 - 下载与应用内更新均使用公开的 GitHub Releases。
 - 版本说明见 [1.5.1](releases/v1.5.1.md)，历史变更见 [CHANGELOG](../CHANGELOG.md)。
 
+GitHub 是后续开发和发布的主仓库。日常代码、标签和 Pull Request 统一使用 GitHub，默认推送到 `origin`；历史备用远程仅在用户明确要求时同步。
+
 ## 版本与标签
 
 对外版本来自 Xcode 工程的 `MARKETING_VERSION`，构建号来自 `CURRENT_PROJECT_VERSION`。新增功能提升次版本，修复提升修订版本；每次准备发布包都递增构建号。
