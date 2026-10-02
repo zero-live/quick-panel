@@ -54,7 +54,7 @@ create-dmg \
   --window-pos 120 120 --window-size 560 310 \
   --icon-size 96 --icon "Quick Panel.app" 150 150 \
   --app-drop-link 400 150 --hide-extension "Quick Panel.app" \
-  "dist/Quick Panel-v1.5.1-universal.dmg" \
+  "dist/Quick.Panel-v1.5.1-universal.dmg" \
   "dist/github-staging-v1.5.1"
 ```
 
@@ -64,7 +64,7 @@ create-dmg \
 
 ```bash
 cd dist
-shasum -a 256 "Quick Panel-v1.5.1-universal.dmg" > SHA256SUMS.txt
+shasum -a 256 "Quick.Panel-v1.5.1-universal.dmg" > SHA256SUMS.txt
 cd ..
 
 git tag v1.5.1
@@ -72,11 +72,11 @@ git push origin master
 git push origin v1.5.1
 
 gh release create v1.5.1 \
-  "dist/Quick Panel-v1.5.1-universal.dmg" "dist/SHA256SUMS.txt" \
+  "dist/Quick.Panel-v1.5.1-universal.dmg" "dist/SHA256SUMS.txt" \
   --repo zero-live/quick-panel --verify-tag --latest \
   --title "Quick Panel 1.5.1" --notes-file docs/releases/v1.5.1.md
 ```
 
 先挂载 DMG 核对内容、版本和签名，再执行发布命令。发布完成后，通过无登录的 GitHub API 和公开附件地址验证访问及 SHA-256 一致性。
 
-更新服务地址：`https://api.github.com/repos/zero-live/quick-panel/releases/latest`。更新包附件名称以 `Quick Panel` 开头，扩展名为 `.dmg`；应用使用 `tag_name`、`body` 和 `assets[].browser_download_url` 读取版本与安装包。
+更新服务地址：`https://api.github.com/repos/zero-live/quick-panel/releases/latest`。更新包附件扩展名为 `.dmg`；应用使用 `tag_name`、`body` 和 `assets[].browser_download_url` 读取版本与安装包。
